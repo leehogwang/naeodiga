@@ -1,0 +1,13 @@
+.vercel
+.env*
+node_modules
+www
+
+# 서명 키, 로컬 설정, 로그, OS 파일
+*.keystore
+*.jks
+*.pem
+.DS_Store
+*.log
+# 실내 AR 비밀 값은 android/.gitignore가 막는다: android/cloud.properties(API 키), assets/nav.json(Cloud Anchor ID)
+js/config.local.js

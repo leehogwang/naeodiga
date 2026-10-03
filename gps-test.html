@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1E2B33">
+<title>GPS 정확도 측정</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+[hidden] { display: none !important; }
+:root { --ink: #1E2B33; --paper: #FFFFFF; --muted: #5E6B66; --rule: #D9E0DB; --soft: #EEF2EF; --go: #0E8A5F; --me: #1D5FD1; --warn: #B8720C; --err: #D33A2C;
+  --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ink: #E8EEEA; --paper: #1B2327; --muted: #9AA7A1; --rule: #33403E; --soft: #25302E; } }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font: 16px/1.45 "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; color: var(--ink); background: var(--paper); display: grid; grid-template-rows: 44dvh 1fr; padding-top: var(--safe-t); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--me); outline-offset: 2px; }
+#map { position: relative; }
+.panel { overflow-y: auto; padding: 14px 16px calc(20px + var(--safe-b)); border-top: 1px solid var(--rule); }
+h1 { font-size: 19px; margin: 0 0 2px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0; }
+h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 18px 0 8px; }
+.field { display: block; margin-top: 10px; }
+.field span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+.inp { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 10px; background: var(--paper); font-size: 16px; }
+.row { display: flex; gap: 8px; margin-top: 10px; }
+.row > * { flex: 1; }
+.btn { min-height: 48px; border-radius: 12px; border: 1px solid var(--rule); background: var(--paper); font-weight: 600; padding: 0 12px; cursor: pointer; }
+.btn.go { background: var(--go); border-color: var(--go); color: #fff; }
+.btn.stop { background: var(--err); border-color: var(--err); color: #fff; }
+.btn.dark { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.btn:disabled { opacity: .45; cursor: default; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.stat { background: var(--soft); border-radius: 10px; padding: 10px 12px; }
+.stat b { display: block; font-size: 22px; letter-spacing: -0.02em; }
+.stat span { font-size: 12px; color: var(--muted); }
+.stat.hero { grid-column: span 2; }
+.stat.hero b { font-size: 30px; }
+.note { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 14px; }
+.note.warn { color: var(--warn); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.wrap { overflow-x: auto; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #1D5FD1; border: 1px solid #fff; opacity: .8; }
+.mean { width: 18px; height: 18px; border-radius: 50%; background: #FFD43B; border: 3px solid #1E2B33; }
+.ref { width: 22px; height: 22px; transform: rotate(45deg); background: #D33A2C; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.5); }
+#toast { position: fixed; z-index: 30; left: 50%; top: calc(var(--safe-t) + 12px); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 14px; border-radius: 12px; font-size: 14px; display: none; max-width: calc(100% - 32px); }
+#fatal { position: fixed; inset: 0; z-index: 50; background: var(--paper); display: grid; place-items: center; padding: 24px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<main class="panel">
+  <h1>GPS 정확도 측정</h1>
+  <p class="sub">실제 서 있는 곳(기준점)과 휴대폰이 알려주는 위치가 얼마나 다른지 재요.</p>
+
+  <h2>1. 어디서 재나요</h2>
+  <label class="field"><span>장소 메모</span><input class="inp" id="memo" placeholder="예: 도서관 정문 앞 계단 아래"></label>
+  <label class="field"><span>환경</span>
+    <select class="inp" id="env">
+      <option value="open">실외, 트인 곳</option>
+      <option value="between">건물 사이</option>
+      <option value="trees">나무 아래</option>
+      <option value="entrance">입구 바로 앞 (건물에 붙어서)</option>
+      <option value="indoor">실내</option>
+    </select></label>
+
+  <h2>2. 실제 위치 정하기</h2>
+  <div class="row">
+    <button class="btn" id="pickRef">지도에서 찍기</button>
+    <select class="inp" id="entSel" aria-label="등록된 입구에서 고르기"><option value="">등록된 입구에서 고르기</option></select>
+  </div>
+  <p class="sub" id="refInfo" style="margin-top:6px">기준점이 없어요. 스카이뷰에서 지금 서 있는 곳을 정확히 찍거나, 입구 앞에 서서 그 입구를 고르세요.</p>
+
+  <h2>3. 측정</h2>
+  <div class="row">
+    <button class="btn go" id="startBtn">측정 시작</button>
+    <button class="btn dark" id="saveBtn" disabled>결과 저장</button>
+  </div>
+  <p class="sub" style="margin-top:6px">한 자리에 가만히 서서 1~2분 재는 것을 추천해요. 휴대폰 화면을 켜 두세요.</p>
+  <div class="stats" id="stats"></div>
+  <div id="advice"></div>
+
+  <h2>저장한 결과</h2>
+  <div class="wrap"><table id="tbl"></table></div>
+  <div id="recommend"></div>
+  <div class="row">
+    <button class="btn" id="exportBtn">JSON으로 내보내기</button>
+    <button class="btn" id="clearBtn">기록 지우기</button>
+  </div>
+  <p class="sub" style="margin-top:6px">내보낸 파일은 저장소의 data/gps-tests.json에 덮어써서 팀과 공유하세요.</p>
+</main>
+<div id="toast" role="status"></div>
+<div id="fatal" hidden><div><h2 id="fatalT" style="font-size:20px;color:var(--ink)"></h2><p id="fatalP" class="sub"></p></div></div>
+
+<script src="js/config.js?v=2026.10.02-10"></script>
+<script src="js/config.local.js?v=2026.10.02-10"></script>
+<script src="js/core.js?v=2026.10.02-10"></script>
+<script src="js/kakao.js?v=2026.10.02-10"></script>
+<script>
+(async () => {
+  const C = Object.assign({ mapCenter: [36.5, 127.8], dataUrl: 'data/campus.geojson' }, window.CAMPUS_CONFIG || {});
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const LS = 'campus-gps-tests-v1';
+  const ENV = { open: '실외, 트인 곳', between: '건물 사이', trees: '나무 아래', entrance: '입구 바로 앞', indoor: '실내' };
+  const lsGet = () => { try { return JSON.parse(localStorage.getItem(LS)) || []; } catch { return []; } };
+  const lsSet = (v) => { try { localStorage.setItem(LS, JSON.stringify(v)); } catch {} };
+  let toastT;
+  const toast = (m) => { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, 3000); };
+  const fatal = (t, p) => { $('#fatalT').textContent = t; $('#fatalP').textContent = p; $('#fatal').hidden = false; };
+
+  let K;
+  try { K = await loadKakaoMaps(C.kakaoKey); }
+  catch (e) { if (e.message === 'TIMEOUT') return fatal('지도가 응답하지 않아요', '광고 차단 확장 프로그램을 끄거나 시크릿 창에서 다시 열어 주세요.'); return fatal(e.message === 'NO_KEY' ? '지도 키가 설정되지 않았어요' : '지도를 불러오지 못했어요', e.message === 'NO_KEY' ? 'js/config.js의 kakaoKey를 채워 주세요.' : `지금 주소(${location.origin})가 카카오 JavaScript SDK 도메인에 등록돼 있는지 확인해 주세요.`); }
+  const map = new K.Map($('#map'), { center: new K.LatLng(C.mapCenter[0], C.mapCenter[1]), level: 2 });
+  map.setMapTypeId(K.MapTypeId.HYBRID);
+  const LL = (a) => new K.LatLng(a[1], a[0]);
+  const distM = (a, b) => { const p = CampusCore.makeProjection(a[1], a[0]).fwd(b); return Math.hypot(p[0], p[1]); };
+  const div = (cls) => { const d = document.createElement('div'); d.className = cls; return d; };
+  const overlay = (pos, el, z) => new K.CustomOverlay({ map, position: LL(pos), content: el, xAnchor: 0.5, yAnchor: 0.5, zIndex: z, clickable: false });
+
+  const S = { tests: lsGet(), run: null, watch: null, ref: null, refSource: '', picking: false, dots: [], meanObj: null, refObj: null, centered: false };
+
+  // 등록된 입구 목록
+  try {
+    const fc = await (await fetch(C.dataUrl, { cache: 'no-store' })).json();
+    const names = {};
+    fc.features.forEach((f) => { if (f.properties.kind === 'building') names[f.properties.id] = f.properties.name; });
+    const opts = fc.features.filter((f) => f.properties.kind === 'entrance').map((f) => ({
+      v: JSON.stringify(f.geometry.coordinates), t: `${names[f.properties.building_id] || '건물 미지정'} ${({ main: '정문', side: '보조', stairs: '계단', elevator: '엘리베이터', parking: '주차장' })[f.properties.type] || ''}`,
+    })).sort((a, b) => a.t.localeCompare(b.t, 'ko'));
+    $('#entSel').insertAdjacentHTML('beforeend', opts.map((o) => `<option value='${esc(o.v)}'>${esc(o.t)}</option>`).join(''));
+    if (!opts.length) $('#entSel').disabled = true;
+  } catch { $('#entSel').disabled = true; }
+
+  function setRef(ll, src) {
+    S.ref = ll; S.refSource = src;
+    if (S.refObj) S.refObj.setMap(null);
+    S.refObj = overlay(ll, div('ref'), 12);
+    $('#refInfo').textContent = `기준점: ${ll[1].toFixed(6)}, ${ll[0].toFixed(6)} (${src === 'map' ? '지도에서 찍음' : '등록된 입구'})`;
+    render();
+  }
+  $('#pickRef').addEventListener('click', () => { S.picking = true; toast('지금 서 있는 곳을 지도에서 눌러 주세요'); });
+  K.event.addListener(map, 'click', (e) => { if (!S.picking) return; S.picking = false; setRef([e.latLng.getLng(), e.latLng.getLat()], 'map'); });
+  $('#entSel').addEventListener('change', (e) => { if (!e.target.value) return; const ll = JSON.parse(e.target.value); setRef(ll, 'entrance'); map.setCenter(LL(ll)); });
+
+  // 측정
+  function summarize(samples, ref) {
+    const n = samples.length; if (!n) return null;
+    const mean = [samples.reduce((s, p) => s + p.lng, 0) / n, samples.reduce((s, p) => s + p.lat, 0) / n];
+    const reported = samples.reduce((s, p) => s + p.acc, 0) / n;
+    const spread = Math.sqrt(samples.reduce((s, p) => s + distM(mean, [p.lng, p.lat]) ** 2, 0) / n);
+    const out = { n, mean_reported_acc_m: +reported.toFixed(1), mean_pos: [+mean[0].toFixed(7), +mean[1].toFixed(7)], spread_m: +spread.toFixed(1) };
+    if (ref) {
+      const errs = samples.map((p) => distM(ref, [p.lng, p.lat])).sort((a, b) => a - b);
+      out.mean_pos_error_m = +distM(ref, mean).toFixed(1);
+      out.sample_error_mean_m = +(errs.reduce((s, x) => s + x, 0) / n).toFixed(1);
+      out.sample_error_p95_m = +errs.at(Math.min(n - 1, Math.ceil(n * 0.95) - 1)).toFixed(1);
+      out.sample_error_max_m = +errs.at(-1).toFixed(1);
+    }
+    return out;
+  }
+  function onSample(p) {
+    if (!S.run) return;
+    const s = { t: p.timestamp || Date.now(), lng: p.coords.longitude, lat: p.coords.latitude, acc: p.coords.accuracy, alt: p.coords.altitude, alt_acc: p.coords.altitudeAccuracy, speed: p.coords.speed };
+    S.run.samples.push(s);
+    S.dots.push(overlay([s.lng, s.lat], div('dot'), 5));
+    if (!S.centered) { S.centered = true; map.setCenter(new K.LatLng(s.lat, s.lng)); }
+    render();
+  }
+  function onErr(e) {
+    if (e.code === 1) { toast('위치 권한이 꺼져 있어요. 브라우저 설정에서 허용해 주세요.'); stop(); }
+    else toast('위치를 받는 중이에요. 하늘이 보이는 곳이면 더 빨라요.');
+  }
+  function start() {
+    if (!navigator.geolocation) return toast('이 기기는 위치 기능을 지원하지 않아요');
+    S.dots.forEach((o) => o.setMap(null)); S.dots = [];
+    if (S.meanObj) { S.meanObj.setMap(null); S.meanObj = null; }
+    S.run = { started_at: new Date().toISOString(), t0: Date.now(), samples: [] };
+    S.watch = navigator.geolocation.watchPosition(onSample, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+    S.timer = setInterval(render, 1000);
+    $('#startBtn').textContent = '측정 멈추기'; $('#startBtn').className = 'btn stop';
+    render();
+  }
+  function stop() {
+    if (S.watch != null) navigator.geolocation.clearWatch(S.watch);
+    S.watch = null; clearInterval(S.timer);
+    $('#startBtn').textContent = '다시 측정'; $('#startBtn').className = 'btn go';
+    if (S.run) S.run.duration_s = Math.round((Date.now() - S.run.t0) / 1000);
+    render();
+  }
+  $('#startBtn').addEventListener('click', () => (S.watch != null ? stop() : start()));
+
+  function render() {
+    const run = S.run, sm = run ? summarize(run.samples, S.ref) : null;
+    const secs = run ? Math.round(((S.watch != null ? Date.now() : run.t0 + (run.duration_s || 0) * 1000) - run.t0) / 1000) : 0;
+    const last = run && run.samples.at(-1);
+    $('#stats').innerHTML = !run ? '' : `
+      <div class="stat hero"><b>${sm && sm.mean_pos_error_m != null ? `${sm.mean_pos_error_m}m` : last ? `±${Math.round(last.acc)}m` : '...'}</b>
+        <span>${sm && sm.mean_pos_error_m != null ? '평균 위치와 기준점 사이 거리 (실제 오차)' : '휴대폰이 알려준 오차 범위 (기준점을 정하면 실제 오차가 나와요)'}</span></div>
+      <div class="stat"><b>${run.samples.length}</b><span>받은 위치 수, ${secs}초</span></div>
+      <div class="stat"><b>${last ? `±${Math.round(last.acc)}m` : '-'}</b><span>지금 휴대폰이 말하는 오차</span></div>
+      <div class="stat"><b>${sm ? `${sm.spread_m}m` : '-'}</b><span>위치가 흔들린 정도</span></div>
+      <div class="stat"><b>${sm && sm.sample_error_p95_m != null ? `${sm.sample_error_p95_m}m` : '-'}</b><span>95% 경우 이 거리 안</span></div>`;
+    if (sm) {
+      if (S.meanObj) S.meanObj.setPosition(LL(sm.mean_pos)); else S.meanObj = overlay(sm.mean_pos, div('mean'), 10);
+    }
+    $('#saveBtn').disabled = !(run && run.samples.length >= 5 && S.watch == null);
+    let adv = '';
+    if (sm && sm.sample_error_mean_m != null && sm.n >= 5) {
+      const ratio = sm.sample_error_mean_m / Math.max(1, sm.mean_reported_acc_m);
+      adv = ratio < 0.5 ? `<p class="note">실제 오차(평균 ${sm.sample_error_mean_m}m)가 휴대폰이 말하는 오차(±${sm.mean_reported_acc_m}m)보다 작아요. 표시값이 넉넉하게 잡혀 있는 편이에요.</p>`
+        : ratio > 1.5 ? `<p class="note warn">휴대폰이 말하는 오차(±${sm.mean_reported_acc_m}m)보다 실제로 ${sm.sample_error_mean_m}m 더 크게 어긋나요. 이 장소에서는 표시되는 정확도를 그대로 믿으면 안 돼요.</p>`
+        : `<p class="note">휴대폰이 말하는 오차(±${sm.mean_reported_acc_m}m)와 실제 오차(평균 ${sm.sample_error_mean_m}m)가 비슷해요.</p>`;
+    }
+    $('#advice').innerHTML = adv;
+    if (run && S.watch == null && run.samples.length < 5) $('#advice').innerHTML += '<p class="note">저장하려면 위치를 5번 이상 받아야 해요.</p>';
+  }
+
+  $('#saveBtn').addEventListener('click', () => {
+    const run = S.run; if (!run) return;
+    if (!S.ref && !confirm('기준점 없이 저장하면 실제 오차는 계산되지 않아요. 그래도 저장할까요?')) return;
+    const test = {
+      id: `g_${Date.now().toString(36)}`, memo: $('#memo').value.trim(), env: $('#env').value,
+      started_at: run.started_at, duration_s: run.duration_s, device: navigator.userAgent,
+      ref: S.ref, ref_source: S.refSource || null,
+      summary: summarize(run.samples, S.ref),
+      samples: run.samples,
+    };
+    S.tests.push(test); lsSet(S.tests);
+    S.run = null; render(); renderTests();
+    // 다음 측정에 이전 장소 메모와 기준점이 그대로 남아 섞이지 않도록 초기화
+    $('#memo').value = ''; $('#entSel').value = '';
+    S.ref = null; S.refSource = ''; if (S.refObj) { S.refObj.setMap(null); S.refObj = null; }
+    $('#refInfo').textContent = '기준점이 없어요. 다음 장소에서 다시 정해 주세요.';
+    toast('저장했어요. 다음 장소의 메모와 기준점을 새로 정해 주세요');
+  });
+
+  function renderTests() {
+    const ts = S.tests;
+    $('#tbl').innerHTML = !ts.length ? '<tr><td class="sub">아직 저장한 결과가 없어요.</td></tr>' : `
+      <tr><th>장소</th><th>환경</th><th class="n">표시 오차</th><th class="n">실제 평균</th><th class="n">95%</th></tr>
+      ${ts.slice().reverse().map((t) => `<tr><td>${esc(t.memo || '메모 없음')}<div class="sub">${t.summary.n}개, ${t.duration_s}초</div></td><td>${ENV[t.env] || t.env}</td>
+        <td class="n">±${t.summary.mean_reported_acc_m}m</td><td class="n">${t.summary.sample_error_mean_m ?? '-'}${t.summary.sample_error_mean_m != null ? 'm' : ''}</td>
+        <td class="n">${t.summary.sample_error_p95_m ?? '-'}${t.summary.sample_error_p95_m != null ? 'm' : ''}</td></tr>`).join('')}`;
+    // 설정 추천: 실외 측정의 95% 오차를 기준으로
+    const outdoor = ts.filter((t) => ['open', 'between', 'trees', 'entrance'].includes(t.env) && t.summary.sample_error_p95_m != null);
+    if (outdoor.length >= 3) {
+      const p95s = outdoor.map((t) => t.summary.sample_error_p95_m).sort((a, b) => a - b);
+      const typical = p95s.at(Math.floor(p95s.length / 2));
+      const arrive = Math.max(10, Math.ceil(typical / 5) * 5);
+      $('#recommend').innerHTML = `<p class="note">실외 측정 ${outdoor.length}곳의 95% 오차 중간값은 ${typical}m예요. js/config.js의 arriveRadius(도착 판단 거리)를 ${arrive}m 정도로 두는 것을 추천해요. 실내 측정값은 추천에서 뺐어요.</p>`;
+    } else $('#recommend').innerHTML = '<p class="note">기준점을 정한 실외 측정이 3곳 이상 모이면 도착 판단 거리를 추천해 드려요.</p>';
+  }
+  $('#exportBtn').addEventListener('click', () => {
+    const out = { type: 'gps-accuracy-tests', exported_at: new Date().toISOString(), tests: S.tests };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }));
+    a.download = 'gps-tests.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+  $('#clearBtn').addEventListener('click', () => { if (!S.tests.length || !confirm(`저장한 ${S.tests.length}건을 이 기기에서 지울까요? 먼저 JSON으로 내보내 두는 것을 추천해요.`)) return; S.tests = []; lsSet(S.tests); renderTests(); });
+  window.addEventListener('beforeunload', (e) => { if (S.run && S.run.samples.length) { e.preventDefault(); e.returnValue = ''; } });
+
+  renderTests();
+  window.gpsTest = { S, onSample, setRef, summarize };
+})();
+</script>
+</body>
+</html>

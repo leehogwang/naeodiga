@@ -1,0 +1,1266 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>캠퍼스 길 편집기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+[hidden] { display: none !important; }
+:root {
+  --paper: #F3F5F2;
+  --panel: #FFFFFF;
+  --ink: #1E2B33;
+  --muted: #5E6B66;
+  --rule: #D3DAD5;
+  --soft: #E7ECE8;
+  --path: #1D5FD1;
+  --stairs: #D9901A;
+  --indoor: #7B4BC4;
+  --bld: #5F7383;
+  --ok: #0E8A5F;
+  --err: #D33A2C;
+  --warn: #D9901A;
+  --focus: #1D5FD1;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #161D21; --panel: #1E272C; --ink: #E4EAE6; --muted: #98A6A0;
+    --rule: #34413F; --soft: #26312F; --focus: #6E9BFF;
+  }
+}
+*, *::before, *::after { box-sizing: inherit; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 14px/1.5 "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  display: grid; grid-template-columns: 372px 1fr; overflow: hidden;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- sidebar ---------- */
+#side { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--rule); background: var(--paper); }
+#side header { padding: 18px 20px 12px; }
+#side h1 { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+#counts { color: var(--muted); font-size: 13px; margin-top: 2px; }
+#dirty { color: var(--warn); font-weight: 600; }
+
+.tabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--rule); }
+.tabs button {
+  border: 0; background: none; padding: 10px 10px 9px; cursor: pointer; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500;
+}
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.tabs .badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--err); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+
+.pane { flex: 1; overflow-y: auto; padding: 16px 20px 24px; display: none; }
+.pane.active { display: block; }
+.pane h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 8px; }
+.pane h2:first-child { margin-top: 0; }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+
+/* tools: 측량 야장처럼 종류별 색 띠 */
+.tools { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tool {
+  display: flex; align-items: center; gap: 8px; padding: 9px 10px; cursor: pointer; text-align: left;
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; font-weight: 500;
+}
+.tool .sw { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.tool[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.tool kbd { margin-left: auto; font: 11px/1 inherit; color: var(--muted); }
+.tool[aria-pressed="true"] kbd { color: var(--paper); opacity: .7; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 14px; border: 1px solid var(--rule); background: var(--panel); cursor: pointer; font-size: 13px; }
+.chip[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-weight: 600; }
+
+/* form */
+.form { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; }
+.form .kind { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.field { display: block; margin-bottom: 10px; }
+.field > span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+.field input[type=text], .field input[type=number], .field select, .field textarea, .inp {
+  width: 100%; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 5px; background: var(--paper);
+}
+.check { display: flex; align-items: center; gap: 8px; margin: 6px 0; cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--ink); }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; }
+
+.btn { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--rule); background: var(--panel); cursor: pointer; font-weight: 500; }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.danger { color: var(--err); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.block { width: 100%; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; align-items: center; gap: 8px; padding: 7px 4px; border-bottom: 1px solid var(--soft); cursor: pointer; }
+.list li:hover { background: var(--soft); }
+.list li .sub { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+.empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+
+.issue { display: grid; grid-template-columns: 6px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--soft); cursor: pointer; }
+.issue .bar { border-radius: 3px; }
+.issue p { margin: 0; font-size: 13px; }
+.issue .what { font-weight: 600; font-size: 12px; }
+.summary { padding: 10px 12px; border-radius: 6px; background: var(--soft); font-size: 13px; margin-bottom: 8px; }
+
+.result { margin-top: 12px; padding: 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--rule); }
+.result .big { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.result .err { color: var(--err); }
+
+#side footer { border-top: 1px solid var(--rule); padding: 12px 20px; display: grid; gap: 8px; }
+#side footer .row .btn { font-size: 13px; padding: 7px 8px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+/* ---------- map ---------- */
+#mapwrap { position: relative; min-height: 0; }
+#map { position: absolute; inset: 0; background: #DDE3DF; }
+.mapbar { position: absolute; top: 12px; right: 12px; z-index: 20; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 70px); }
+.mapbar .btn, .mapbar input { box-shadow: 0 1px 3px rgba(20,30,35,.25); }
+.mapbar input { width: 210px; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); }
+#modeHint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 20; background: var(--ink); color: var(--paper);
+  padding: 8px 14px; border-radius: 18px; font-size: 13px; display: none; white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis; }
+#toast { position: absolute; left: 50%; top: 60px; transform: translateX(-50%); z-index: 30; background: var(--panel); color: var(--ink);
+  border: 1px solid var(--rule); padding: 8px 12px; border-radius: 8px; font-size: 13px; display: none; gap: 10px; align-items: center; box-shadow: 0 2px 8px rgba(20,30,35,.2); }
+#toast button { border: 0; background: none; color: var(--path); font-weight: 600; cursor: pointer; }
+
+/* 입구 마커: 한 글자 표식 */
+.ent { width: 24px; height: 24px; border-radius: 5px; color: #fff; font: 700 12px/24px "IBM Plex Sans KR", sans-serif; text-align: center;
+  border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.ent.sel { outline: 3px solid #FFD43B; outline-offset: 1px; }
+.ent.closed { opacity: .55; }
+.bld-label { background: rgba(255,255,255,.88); font: 600 12px "IBM Plex Sans KR", sans-serif; color: #1E2B33; padding: 1px 6px; border-radius: 3px; white-space: nowrap; pointer-events: none; }
+/* 편집 핸들과 스냅 표시 */
+.vh { width: 12px; height: 12px; background: #fff; border: 2px solid #1E2B33; border-radius: 3px; cursor: move; touch-action: none; }
+.mh { width: 10px; height: 10px; background: rgba(255,255,255,.7); border: 1.5px solid #1E2B33; border-radius: 50%; cursor: copy; touch-action: none; }
+.rh { width: 26px; height: 26px; background: #FFD43B; color: #1E2B33; border: 2px solid #1E2B33; border-radius: 50%; font: 700 15px/22px sans-serif; text-align: center; cursor: grab; touch-action: none; }
+.snap { width: 18px; height: 18px; border: 3px solid #FF2D87; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px #fff; }
+.snap.edge { background: none; border-style: dashed; }
+.snap.vertex { background: rgba(255,45,135,.35); }
+.issue-ring { width: 24px; height: 24px; border-radius: 50%; border: 3px solid #D33A2C; pointer-events: none; }
+.issue-ring.warn { border-color: #D9901A; }
+.start-dot { width: 16px; height: 16px; border-radius: 50%; background: #1E2B33; border: 3px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); pointer-events: none; }
+.ent { cursor: pointer; touch-action: none; }
+#drawBar { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 20; display: none; gap: 6px; }
+#drawBar .btn { box-shadow: 0 1px 3px rgba(20,30,35,.3); }
+#gate { position: fixed; inset: 0; z-index: 100; background: var(--paper); display: grid; place-items: center; padding: 24px; }
+#gate .card { max-width: 520px; width: 100%; }
+#gate h2 { font-size: 20px; margin: 0 0 6px; }
+#gate ol { padding-left: 20px; color: var(--muted); font-size: 13px; }
+#gate code { background: var(--soft); padding: 1px 5px; border-radius: 3px; }
+#gateMsg { color: var(--err); font-size: 13px; min-height: 1.5em; }
+.seg { display: flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(20,30,35,.25); }
+.seg button { border: 0; background: var(--panel); padding: 7px 10px; cursor: pointer; font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+
+@media (max-width: 760px) {
+  body { grid-template-columns: 1fr; grid-template-rows: 52% 48%; }
+  #mapwrap { grid-row: 1; }
+  #side { grid-row: 2; border-right: 0; border-top: 1px solid var(--rule); }
+  #side header { padding: 10px 16px 6px; }
+  .mapbar input { width: 150px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div id="gate" hidden>
+  <div class="card form">
+    <h2>카카오맵 JavaScript 키를 넣어 주세요</h2>
+    <p class="hint" style="margin-bottom:10px">키는 이 브라우저에만 저장돼요.</p>
+    <ol>
+      <li>카카오 디벨로퍼스에서 앱을 만들고 <b>JavaScript 키</b>를 복사해요.</li>
+      <li>앱 설정의 플랫폼(Web)에 지금 주소 <code id="originNow"></code>를 사이트 도메인으로 등록해요.</li>
+      <li>팀 전체가 쓰려면 <code>js/config.local.js</code>의 <code>kakaoKey</code>에 넣고 배포하면 이 화면이 뜨지 않아요.</li>
+    </ol>
+    <p id="fileWarn" class="hint" style="color:var(--warn)" hidden>지금은 파일로 직접 열려 있어서 카카오맵이 동작하지 않아요. 배포된 주소나 <code>python -m http.server 8000</code>으로 열어 주세요.</p>
+    <div class="row" style="margin-top:10px"><input class="inp" id="keyIn" type="text" placeholder="JavaScript 키" autocomplete="off" style="flex:3"><button class="btn primary" id="keyGo">지도 불러오기</button></div>
+    <p id="gateMsg"></p>
+  </div>
+</div>
+<aside id="side">
+  <header>
+    <h1>캠퍼스 길 편집기</h1>
+    <div id="counts"></div>
+  </header>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="edit">편집</button>
+    <button role="tab" aria-selected="false" data-tab="check">검증<span class="badge" id="issueBadge" hidden></span></button>
+    <button role="tab" aria-selected="false" data-tab="route">경로 테스트</button>
+  </div>
+
+  <!-- 편집 -->
+  <section class="pane active" id="pane-edit">
+    <h2>그리기 도구</h2>
+    <div class="tools">
+      <button class="tool" data-tool="select" aria-pressed="true"><span class="sw" style="background:var(--muted)"></span>선택·수정<kbd>V</kbd></button>
+      <button class="tool" data-tool="building" aria-pressed="false"><span class="sw" style="background:var(--bld)"></span>건물 그리기<kbd>B</kbd></button>
+      <button class="tool" data-tool="entrance" aria-pressed="false"><span class="sw" style="background:var(--ok)"></span>입구 찍기<kbd>E</kbd></button>
+      <button class="tool" data-tool="path" aria-pressed="false"><span class="sw" style="background:var(--path)"></span>인도 그리기<kbd>P</kbd></button>
+      <button class="tool" data-tool="erase" aria-pressed="false" style="grid-column:span 2"><span class="sw" style="background:var(--err)"></span>지우개 (누르는 대로 삭제)<kbd>X</kbd></button>
+    </div>
+    <div id="bldShapes" hidden>
+      <div class="chips">
+        <button class="chip" data-v="polygon" aria-pressed="true"><span class="sw" style="width:16px;height:12px;margin-left:6px;background:var(--bld);clip-path:polygon(0 30%,60% 0,100% 50%,70% 100%,10% 90%)"></span>다각형</button>
+        <button class="chip" data-v="rect" aria-pressed="false"><span class="sw" style="width:16px;height:12px;margin-left:6px;background:var(--bld)"></span>사각형</button>
+      </div>
+      <label class="field" id="rectAngleWrap" style="margin-top:10px" hidden><span>사각형 기울기 (시계 방향 °, 캠퍼스 건물 방향에 맞추기)</span>
+        <div class="row" style="align-items:center"><input type="range" id="rectAngle" min="-90" max="90" step="1" value="0" style="flex:3"><input type="number" id="rectAngleNum" min="-90" max="90" step="1" value="0" style="flex:1"></div></label>
+    </div>
+    <div id="entranceTypes" class="chips" hidden></div>
+    <div id="pathTypes" class="chips" hidden></div>
+    <p class="hint" id="toolHint">지도에서 건물, 입구, 길을 눌러 속성을 고치거나 꼭짓점을 옮길 수 있어요.</p>
+
+    <h2>선택한 항목</h2>
+    <div id="formHost"><p class="empty">선택한 항목이 없어요. 지도에서 하나를 눌러 보세요.</p></div>
+
+    <h2>건물 목록</h2>
+    <input class="inp" id="listFilter" type="text" placeholder="이름이나 별칭으로 찾기">
+    <ul class="list" id="bldList"></ul>
+  </section>
+
+  <!-- 검증 -->
+  <section class="pane" id="pane-check">
+    <div class="row">
+      <label class="field"><span>같은 점으로 볼 거리 (m)</span><input type="number" id="snapTol" value="1" min="0.1" step="0.1"></label>
+      <label class="field"><span>입구 연결 최대 거리 (m)</span><input type="number" id="entTol" value="15" min="1" step="1"></label>
+    </div>
+    <button class="btn primary block" id="runCheck">경로망 만들고 검사하기</button>
+    <label class="check"><input type="checkbox" id="showNet" checked>지도에 경로망 표시 (떨어진 길은 빨간 점선)</label>
+    <div id="checkOut"><p class="hint">인도를 교차점에서 자르고, 가까운 끝점을 합치고, 입구를 가장 가까운 인도에 연결한 뒤 끊긴 곳을 찾아요.</p></div>
+  </section>
+
+  <!-- 경로 테스트 -->
+  <section class="pane" id="pane-route">
+    <label class="field"><span>챗봇에 들어올 질문처럼 입력해 보세요</span>
+      <input type="text" class="inp" id="dest" placeholder="예: 공대, 중앙도서관" list="bldNames" autocomplete="off"></label>
+    <datalist id="bldNames"></datalist>
+    <div id="destMatch" class="hint"></div>
+    <h2>출발점</h2>
+    <div class="row">
+      <button class="btn" id="pickStart">지도에서 찍기</button>
+      <button class="btn" id="gpsStart">내 위치 사용</button>
+    </div>
+    <p class="hint" id="startInfo">출발점이 없어요.</p>
+    <h2>조건</h2>
+    <label class="check"><input type="checkbox" id="avoidStairs">계단 피하기 (휠체어, 무거운 짐)</label>
+    <label class="check"><input type="checkbox" id="openOnly">지금 열려 있는 입구만</label>
+    <button class="btn primary block" id="findRoute" style="margin-top:10px">경로 찾기</button>
+    <div id="routeOut"></div>
+  </section>
+
+  <footer>
+    <div class="row">
+      <button class="btn primary" id="saveBtn" title="Ctrl+S">JSON으로 저장</button>
+      <button class="btn" id="importBtn">JSON 열기</button>
+    </div>
+    <p class="hint" id="saveInfo" style="margin:0">campus.geojson으로 저장해 저장소의 data 폴더에 덮어쓰면 길찾기 화면에 반영돼요. 작업 중인 내용은 이 브라우저에도 자동으로 임시 보관돼요.</p>
+    <button class="btn" id="loadDeployed">배포된 데이터 불러오기</button>
+    <details>
+      <summary>서버 연결과 경로망 내보내기</summary>
+      <label class="field" style="margin-top:8px"><span>API 주소 (비워 두면 JSON 파일로만 저장)</span>
+        <input type="text" class="inp" id="apiBase" placeholder="https://example.ac.kr/api"></label>
+      <div class="row">
+        <button class="btn" id="saveServer">서버에 저장</button>
+        <button class="btn" id="loadServer">서버에서 불러오기</button>
+      </div>
+      <button class="btn block" id="exportNet" style="margin-top:8px">경로망 GeoJSON 내보내기</button>
+      <button class="btn block" id="changeKey" style="margin-top:8px">카카오 키 바꾸기</button>
+      <p class="hint">서버는 <code>GET /campus</code>와 <code>PUT /campus</code>로 아래 저장 파일과 같은 GeoJSON을 주고받으면 돼요. 경로망 GeoJSON은 pgRouting용 source, target, cost 형식이에요.</p>
+    </details>
+    <input type="file" id="fileIn" accept=".geojson,.json,application/json" hidden>
+  </footer>
+</aside>
+
+<main id="mapwrap">
+  <div id="map"></div>
+  <div class="mapbar">
+    <div class="seg" role="group" aria-label="지도 종류">
+      <button data-mt="ROADMAP" aria-pressed="false">일반</button><button data-mt="HYBRID" aria-pressed="true">스카이뷰</button>
+    </div>
+    <input type="text" id="gotoIn" placeholder="좌표로 이동 (37.1234, 127.5678)">
+    <button class="btn" id="locBtn">내 위치</button>
+  </div>
+  <div id="drawBar">
+    <button class="btn primary" id="dbDone">완료 (Enter)</button>
+    <button class="btn" id="dbUndo">점 취소 (←)</button>
+    <button class="btn" id="dbStop">끝내기 (Esc)</button>
+  </div>
+  <div id="modeHint"></div>
+  <div id="toast"><span id="toastMsg"></span><button id="toastAct" hidden></button></div>
+</main>
+
+<script src="js/config.js?v=2026.10.02-10"></script>
+<script src="js/config.local.js?v=2026.10.02-10"></script>
+<script src="js/core.js?v=2026.10.02-10"></script>
+<script src="js/kakao.js?v=2026.10.02-10"></script>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
+  const LS_DATA = 'campus-editor-data-v1', LS_VIEW = 'campus-editor-kview-v1', LS_API = 'campus-editor-api-v1', LS_KEY = 'campus-editor-kakao-key-v1';
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+  const lsDel = (k) => { try { localStorage.removeItem(k); } catch {} };
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // ---------- 카카오 키 입력 화면 ----------
+  $('#originNow').textContent = location.origin && location.origin !== 'null' ? location.origin : '(파일로 열림)';
+  $('#fileWarn').hidden = location.protocol !== 'file:';
+  $('#keyIn').value = lsGet(LS_KEY) || '';
+  const gateMsg = (m) => { $('#gate').hidden = false; $('#gateMsg').textContent = m; };
+  const CFG = window.CAMPUS_CONFIG || {};
+  function boot(key) {
+    if (!key) { $('#gate').hidden = false; return; }
+    $('#gateMsg').textContent = '지도를 불러오는 중이에요...';
+    loadKakaoMaps(key).then(() => { if (!CFG.kakaoKey) lsSet(LS_KEY, key); start(); })
+      .catch((e) => gateMsg(e.message === 'TIMEOUT'
+        ? '10초가 지나도 지도가 오지 않아요. 광고 차단 확장 프로그램을 끄거나 시크릿 창에서 열어 보고, 카카오 앱의 제품 설정에서 카카오맵이 켜져 있는지 확인해 주세요.'
+        : '카카오맵을 불러오지 못했어요. 키가 맞는지, 지금 주소가 JavaScript SDK 도메인에 등록돼 있는지 확인해 주세요.'));
+  }
+  $('#keyGo').addEventListener('click', () => boot($('#keyIn').value.trim()));
+  $('#keyIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') boot($('#keyIn').value.trim()); });
+  $('#changeKey').addEventListener('click', () => { lsDel(LS_KEY); location.reload(); });
+  boot(CFG.kakaoKey || lsGet(LS_KEY));
+
+  function start() {
+    $('#gate').hidden = true;
+    try { init(); } catch (err) { console.error(err); gateMsg(`편집기를 시작하지 못했어요: ${err.message}`); }
+  }
+
+  function init() {
+    const K = kakao.maps;
+    const ENT = {
+      main: { label: '정문', ch: '정', color: '#0E8A5F' },
+      side: { label: '보조 출입구', ch: '보', color: '#1B8FA6' },
+      stairs: { label: '계단 출입구', ch: '계', color: '#D9901A' },
+      elevator: { label: '엘리베이터', ch: 'E', color: '#7B4BC4' },
+      parking: { label: '주차장 연결', ch: 'P', color: '#5E6B66' },
+    };
+    const PATH_PRESET = {
+      normal: { label: '일반 인도', color: '#1D5FD1', props: { is_stairs: false, wheelchair: true, indoor: false, lit: true, active: true } },
+      stairs: { label: '계단', color: '#D9901A', props: { is_stairs: true, wheelchair: false, indoor: false, lit: true, active: true } },
+      indoor: { label: '실내 통로', color: '#7B4BC4', props: { is_stairs: false, wheelchair: true, indoor: true, lit: true, active: true } },
+    };
+    const SEL = '#FFD43B';
+    const S = {
+      store: new Map(), selected: null, tool: 'select', entType: 'main', pathType: 'normal',
+      bldShape: 'polygon', rectAngle: 0, forceBuilding: null, rotateEnts: true,
+      draft: null, drag: null, handles: [], start: null, picking: false,
+      lastDeleted: null, dirty: false, fileHandle: null, lastShapeClick: 0,
+    };
+
+    // ---------- 좌표 도우미 ----------
+    const r7 = (n) => Math.round(n * 1e7) / 1e7;
+    const LL = (a) => new K.LatLng(a[1], a[0]);
+    const arr = (ll) => [r7(ll.getLng()), r7(ll.getLat())];
+    const distM = (a, b) => { const p = CampusCore.makeProjection(a[1], a[0]).fwd(b); return Math.hypot(p[0], p[1]); };
+    const lineLen = (pts) => pts.slice(1).reduce((s, p, i) => s + distM(pts[i], p), 0);
+    function centroid(ring) {
+      const pj = CampusCore.makeProjection(ring[0][1], ring[0][0]);
+      const P = ring.map(pj.fwd);
+      let A = 0, cx = 0, cy = 0;
+      for (let i = 0; i < P.length; i++) {
+        const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length], k = x1 * y2 - x2 * y1;
+        A += k; cx += (x1 + x2) * k; cy += (y1 + y2) * k;
+      }
+      if (Math.abs(A) < 1e-9) { const n = ring.length; return [ring.reduce((s, p) => s + p[0], 0) / n, ring.reduce((s, p) => s + p[1], 0) / n]; }
+      return pj.inv([cx / (3 * A), cy / (3 * A)]);
+    }
+    function rotateAround(pts, c, deg) { // +는 시계 방향
+      const pj = CampusCore.makeProjection(c[1], c[0]);
+      const th = (deg * Math.PI) / 180, co = Math.cos(th), si = Math.sin(th);
+      return pts.map((ll) => { const [x, y] = pj.fwd(ll); const q = pj.inv([x * co + y * si, -x * si + y * co]); return [r7(q[0]), r7(q[1])]; });
+    }
+    // 외곽선 변화(강체 변환)를 다른 점들에 똑같이 적용
+    function transformPoints(points, oldRing, newRing) {
+      const pj = CampusCore.makeProjection(oldRing[0][1], oldRing[0][0]);
+      const a0 = pj.fwd(oldRing[0]), a1 = pj.fwd(oldRing[1]), b0 = pj.fwd(newRing[0]), b1 = pj.fwd(newRing[1]);
+      const th = Math.atan2(b1[1] - b0[1], b1[0] - b0[0]) - Math.atan2(a1[1] - a0[1], a1[0] - a0[0]);
+      const c = Math.cos(th), s = Math.sin(th);
+      return points.map((pt) => { const p = pj.fwd(pt), dx = p[0] - a0[0], dy = p[1] - a0[1]; const q = pj.inv([b0[0] + dx * c - dy * s, b0[1] + dx * s + dy * c]); return [r7(q[0]), r7(q[1])]; });
+    }
+    function buildingAngle(ring) {
+      const pj = CampusCore.makeProjection(ring[0][1], ring[0][0]);
+      const p = ring.map(pj.fwd);
+      let best = 0, ang = 0;
+      for (let i = 0; i < p.length; i++) {
+        const a = p[i], b = p[(i + 1) % p.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (len > best) { best = len; ang = (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180) / Math.PI; }
+      }
+      return ((ang % 180) + 180) % 180;
+    }
+    function rectCorners(A, C, deg) {
+      const pj = CampusCore.makeProjection(A[1], A[0]);
+      const c = pj.fwd(C), th = (deg * Math.PI) / 180;
+      const e1 = [Math.cos(th), -Math.sin(th)], e2 = [Math.sin(th), Math.cos(th)];
+      const a = c[0] * e1[0] + c[1] * e1[1], b = c[0] * e2[0] + c[1] * e2[1];
+      return [[0, 0], [a * e1[0], a * e1[1]], [a * e1[0] + b * e2[0], a * e1[1] + b * e2[1]], [b * e2[0], b * e2[1]]]
+        .map((p) => { const q = pj.inv(p); return [r7(q[0]), r7(q[1])]; });
+    }
+
+    // ---------- 지도 ----------
+    const mapEl = $('#map');
+    let view = { center: [36.4, 127.9], level: 12 };
+    try { view = JSON.parse(lsGet(LS_VIEW)) || view; } catch {}
+    if (!lsGet(LS_VIEW) && CFG.mapCenter) view = { center: CFG.mapCenter, level: 4 };
+    const map = new K.Map(mapEl, { center: new K.LatLng(view.center[0], view.center[1]), level: view.level });
+    try { map.addControl(new K.ZoomControl(), K.ControlPosition.RIGHT); } catch {}
+    function setMapType(t) {
+      map.setMapTypeId(K.MapTypeId[t]);
+      $$('.seg [data-mt]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mt === t));
+    }
+    setMapType('HYBRID');
+    $$('.seg [data-mt]').forEach((b) => b.addEventListener('click', () => setMapType(b.dataset.mt)));
+    K.event.addListener(map, 'idle', () => { const c = map.getCenter(); lsSet(LS_VIEW, JSON.stringify({ center: [c.getLat(), c.getLng()], level: map.getLevel() })); });
+    K.event.addListener(map, 'zoom_changed', () => { const rec = S.store.get(S.selected); if (rec && rec.kind === 'building' && !S.drag) showHandles(rec); });
+    window.addEventListener('resize', () => map.relayout());
+
+    const toPx = (a) => { const p = map.getProjection().containerPointFromCoords(LL(a)); return { x: p.x, y: p.y }; };
+    const fromPx = (x, y) => arr(map.getProjection().coordsFromContainerPoint(new K.Point(x, y)));
+    const evPx = (e) => { const r = mapEl.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    const div = (cls, html = '') => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; return d; };
+    const overlay = (pos, el, z, clickable = true) => new K.CustomOverlay({ map, position: LL(pos), content: el, xAnchor: 0.5, yAnchor: 0.5, zIndex: z, clickable });
+    const fitTo = (pts) => {
+      if (!pts.length) return;
+      const b = new K.LatLngBounds();
+      pts.forEach((p) => b.extend(LL(p)));
+      map.setBounds(b);
+    };
+
+    // ---------- 스타일 ----------
+    const bldOpts = (sel) => ({ strokeWeight: sel ? 3 : 1.5, strokeColor: sel ? SEL : '#E9EEF2', strokeOpacity: 1, strokeStyle: 'solid', fillColor: '#5F7383', fillOpacity: sel ? 0.45 : 0.3, zIndex: 1 });
+    function pathOpts(p, sel) {
+      const c = p.is_stairs ? '#D9901A' : p.indoor ? '#7B4BC4' : '#1D5FD1';
+      return { strokeWeight: sel ? 7 : 5, strokeColor: sel ? SEL : c, strokeOpacity: p.active === false ? 0.45 : 0.95,
+        strokeStyle: p.active === false ? 'dash' : p.is_stairs ? 'shortdot' : 'solid', zIndex: 2 };
+    }
+    function entHtml(p, sel) {
+      const t = ENT[p.type] || ENT.main;
+      const closed = p.open_hours && !CampusCore.isOpenNow(p.open_hours);
+      return `<div class="ent${sel ? ' sel' : ''}${closed ? ' closed' : ''}" style="background:${t.color}">${t.ch}</div>`;
+    }
+
+    // ---------- 데이터 ----------
+    const newId = (k) => `${k[0]}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const closeRing = (g) => (g.length && (g[0][0] !== g.at(-1)[0] || g[0][1] !== g.at(-1)[1]) ? [...g, g[0]] : g.slice());
+    const openRing = (g) => (g.length > 1 && g[0][0] === g.at(-1)[0] && g[0][1] === g.at(-1)[1] ? g.slice(0, -1) : g.slice());
+    const geomOf = (rec) => (rec.kind === 'building' ? closeRing(rec.geom) : rec.kind === 'path' ? rec.geom.slice() : rec.geom.slice());
+
+    function render(rec) {
+      const sel = S.selected === rec.id;
+      if (rec.kind === 'building') {
+        const path = rec.geom.map(LL);
+        if (!rec.shape) {
+          rec.shape = new K.Polygon({ map, path, ...bldOpts(sel) });
+          K.event.addListener(rec.shape, 'click', () => shapeClick(rec.id));
+        } else { rec.shape.setPath(path); rec.shape.setOptions(bldOpts(sel)); }
+        if (rec.props.name) {
+          if (!rec.label) { rec.labelEl = div('bld-label'); rec.label = overlay(centroid(rec.geom), rec.labelEl, 3, false); }
+          rec.labelEl.textContent = rec.props.name;
+          rec.label.setPosition(LL(centroid(rec.geom)));
+        } else if (rec.label) { rec.label.setMap(null); rec.label = null; }
+      } else if (rec.kind === 'path') {
+        const path = rec.geom.map(LL);
+        if (!rec.shape) {
+          rec.shape = new K.Polyline({ map, path, ...pathOpts(rec.props, sel) });
+          K.event.addListener(rec.shape, 'click', () => shapeClick(rec.id));
+        } else { rec.shape.setPath(path); rec.shape.setOptions(pathOpts(rec.props, sel)); }
+      } else {
+        if (!rec.shape) {
+          rec.el = div('');
+          rec.shape = overlay(rec.geom, rec.el, 6, true);
+          rec.el.addEventListener('pointerdown', (e) => {
+            if (S.tool === 'select' && !S.picking && S.selected === rec.id) startDrag(e, rec, 0, 'entrance');
+          });
+          rec.el.addEventListener('click', () => shapeClick(rec.id));
+        }
+        rec.el.innerHTML = entHtml(rec.props, sel);
+        rec.shape.setPosition(LL(rec.geom));
+      }
+    }
+    function unrender(rec) {
+      if (rec.shape) rec.shape.setMap(null);
+      if (rec.label) rec.label.setMap(null);
+      rec.shape = null; rec.label = null;
+    }
+
+    function addFeature(kind, geom, props, id = newId(kind)) {
+      const rec = { id, kind, geom: kind === 'building' ? openRing(geom) : geom, props: { ...props } };
+      S.store.set(id, rec);
+      render(rec);
+      return rec;
+    }
+    const buildings = () => [...S.store.values()].filter((r) => r.kind === 'building');
+    const entrancesOf = (bid) => [...S.store.values()].filter((r) => r.kind === 'entrance' && r.props.building_id === bid);
+
+    function toData() {
+      const d = { buildings: [], entrances: [], paths: [] };
+      S.store.forEach((r) => {
+        if (r.kind === 'building') d.buildings.push({ id: r.id, ring: geomOf(r), props: r.props });
+        else if (r.kind === 'entrance') d.entrances.push({ id: r.id, coord: r.geom, props: r.props });
+        else d.paths.push({ id: r.id, coords: r.geom, props: r.props });
+      });
+      return d;
+    }
+    function toGeoJSON() {
+      const features = [...S.store.values()].map((r) => ({
+        type: 'Feature',
+        properties: { kind: r.kind, id: r.id, ...r.props },
+        geometry: r.kind === 'building' ? { type: 'Polygon', coordinates: [geomOf(r)] }
+          : r.kind === 'path' ? { type: 'LineString', coordinates: geomOf(r) } : { type: 'Point', coordinates: geomOf(r) },
+      }));
+      return { type: 'FeatureCollection', name: 'campus', saved_at: new Date().toISOString(), features };
+    }
+    function loadGeoJSON(fc, { fit = true } = {}) {
+      if (!fc || !Array.isArray(fc.features)) throw new Error('GeoJSON FeatureCollection 형식이 아니에요');
+      clearAll();
+      let skipped = 0;
+      fc.features.forEach((f) => {
+        const g = f.geometry || {};
+        const { kind: k0, id, ...props } = f.properties || {};
+        const kind = k0 || (g.type === 'Polygon' ? 'building' : g.type === 'LineString' ? 'path' : g.type === 'Point' ? 'entrance' : null);
+        if (kind === 'building' && g.type === 'Polygon') addFeature(kind, g.coordinates[0], props, id || undefined);
+        else if (kind === 'path' && g.type === 'LineString') addFeature(kind, g.coordinates, props, id || undefined);
+        else if (kind === 'entrance' && g.type === 'Point') addFeature(kind, g.coordinates, props, id || undefined);
+        else skipped++;
+      });
+      refreshAll();
+      if (fit) fitTo([...S.store.values()].flatMap((r) => (r.kind === 'entrance' ? [r.geom] : r.geom)));
+      return skipped;
+    }
+    function clearAll() {
+      deselect(); cancelDraft();
+      S.store.forEach(unrender); S.store.clear();
+      clearNet(); clearRoute(); clearStart(); S.start = null;
+    }
+
+    let autosaveTimer;
+    function changed() {
+      S.dirty = true;
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(() => lsSet(LS_DATA, JSON.stringify(toGeoJSON())), 400);
+      if (netObjs.length) { clearNet(); $('#checkOut').innerHTML = '<p class="hint">편집한 내용이 있어요. 다시 검사해 주세요.</p>'; }
+      refreshAll();
+    }
+    function refreshAll() { renderCounts(); renderList(); renderDatalist(); if (S.selected) renderForm(); }
+    function renderCounts() {
+      const c = { building: 0, entrance: 0, path: 0 }; let len = 0;
+      S.store.forEach((r) => { c[r.kind]++; if (r.kind === 'path') len += lineLen(r.geom); });
+      $('#counts').innerHTML = `건물 ${c.building}개, 입구 ${c.entrance}곳, 인도 ${c.path}개 (${len >= 1000 ? (len / 1000).toFixed(2) + 'km' : Math.round(len) + 'm'})`
+        + (S.dirty ? ' <span id="dirty">저장 안 됨</span>' : '');
+    }
+
+    // ---------- 스냅 (카카오 지도 위에 표시) ----------
+    const SNAP_V = 14, SNAP_E = 10;
+    const RULES = {
+      path: { ent: true, pathV: true, pathE: true, bldV: false, bldE: false },
+      building: { ent: false, pathV: false, pathE: false, bldV: true, bldE: true },
+      entrance: { ent: false, pathV: true, pathE: true, bldV: true, bldE: true },
+    };
+    function snapAt(px, mode, ex) {
+      const rule = RULES[mode]; if (!rule) return null;
+      let best = null;
+      const tryV = (g) => { const p = toPx(g), d = Math.hypot(p.x - px.x, p.y - px.y); if (d <= SNAP_V && (!best || d < best.d)) best = { d, ll: g.slice(), type: 'vertex' }; };
+      S.store.forEach((r) => {
+        if (ex && ex.rec === r && (r.kind === 'entrance' || ex.whole)) return;
+        if (r.kind === 'entrance') { if (rule.ent) tryV(r.geom); return; }
+        if ((r.kind === 'path' && rule.pathV) || (r.kind === 'building' && rule.bldV)) r.geom.forEach((g, i) => { if (!(ex && ex.rec === r && ex.index === i)) tryV(g); });
+      });
+      if (S.draft) S.draft.pts.forEach(tryV);
+      if (best) return best;
+      S.store.forEach((r) => {
+        if (!((r.kind === 'path' && rule.pathE) || (r.kind === 'building' && rule.bldE))) return;
+        if (ex && ex.rec === r && ex.whole) return;
+        const g = r.kind === 'building' ? closeRing(r.geom) : r.geom;
+        const n = r.kind === 'building' ? r.geom.length : 0;
+        for (let i = 0; i < g.length - 1; i++) {
+          if (ex && ex.rec === r) {
+            const j = i + 1 === n ? 0 : i + 1;
+            if (i === ex.index || j === ex.index) continue; // 끌고 있는 꼭짓점에 붙은 변은 제외
+          }
+          const a = toPx(g[i]), b = toPx(g[i + 1]);
+          const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+          let t = L2 ? ((px.x - a.x) * dx + (px.y - a.y) * dy) / L2 : 0;
+          t = Math.max(0, Math.min(1, t));
+          const d = Math.hypot(a.x + t * dx - px.x, a.y + t * dy - px.y);
+          if (d <= SNAP_E && (!best || d < best.d)) best = { d, type: 'edge', ll: [r7(g[i][0] + t * (g[i + 1][0] - g[i][0])), r7(g[i][1] + t * (g[i + 1][1] - g[i][1]))] };
+        }
+      });
+      return best;
+    }
+    const snapEl = div('snap');
+    const snapOv = new K.CustomOverlay({ position: new K.LatLng(0, 0), content: snapEl, xAnchor: 0.5, yAnchor: 0.5, zIndex: 50, clickable: false });
+    function showSnap(sn) {
+      if (!sn) { snapOv.setMap(null); return; }
+      snapEl.className = `snap ${sn.type}`;
+      snapOv.setPosition(LL(sn.ll));
+      if (!snapOv.getMap || !snapOv.getMap()) snapOv.setMap(map);
+    }
+    const modeForTool = (t) => (t === 'building' ? 'building' : t === 'path' ? 'path' : t === 'entrance' ? 'entrance' : null);
+
+    // ---------- 그리기 ----------
+    let draftShapes = [];
+    function clearDraftShapes() { draftShapes.forEach((s) => s.setMap(null)); draftShapes = []; }
+    function cancelDraft() { S.draft = null; clearDraftShapes(); showSnap(null); $('#drawBar').style.display = 'none'; }
+    function updateDraft(cursor) {
+      clearDraftShapes();
+      const d = S.draft; if (!d) return;
+      if (d.kind === 'rect') {
+        if (d.pts.length === 1 && cursor) draftShapes.push(new K.Polygon({ map, path: rectCorners(d.pts[0], cursor, S.rectAngle).map(LL), ...bldOpts(true) }));
+        return;
+      }
+      const pts = cursor ? [...d.pts, cursor] : d.pts;
+      if (d.kind === 'building' && pts.length >= 3) draftShapes.push(new K.Polygon({ map, path: pts.map(LL), ...bldOpts(true) }));
+      if (pts.length >= 2) draftShapes.push(new K.Polyline({ map, path: pts.map(LL), strokeWeight: 4, strokeColor: SEL, strokeOpacity: 1, strokeStyle: 'solid', zIndex: 40 }));
+      d.pts.forEach((p) => draftShapes.push(overlay(p, div('vh'), 41, false)));
+    }
+    function drawClick(px, noSnap) {
+      const mode = S.tool === 'building' ? 'building' : S.tool;
+      const sn = noSnap ? null : snapAt(px, mode, null);
+      const pt = sn ? sn.ll : fromPx(px.x, px.y);
+      if (S.tool === 'entrance') { placeEntrance(pt); return; }
+      if (!S.draft) S.draft = { kind: S.tool === 'building' && S.bldShape === 'rect' ? 'rect' : S.tool, pts: [] };
+      const d = S.draft;
+      if (d.kind === 'rect') {
+        if (!d.pts.length) { d.pts.push(pt); updateDraft(null); return; }
+        const ring = rectCorners(d.pts[0], pt, S.rectAngle);
+        cancelDraft();
+        finishBuilding(ring);
+        return;
+      }
+      if (d.kind === 'path' && d.pts.length >= 1 && distM(pt, d.pts.at(-1)) < 0.05) { finishDraft(); return; }
+      if (d.kind === 'building' && d.pts.length >= 3 && distM(pt, d.pts[0]) < 0.05) { finishDraft(); return; }
+      d.pts.push(pt);
+      updateDraft(null);
+    }
+    function finishDraft() {
+      const d = S.draft; if (!d) return;
+      if (d.kind === 'path') {
+        if (d.pts.length < 2) { toast('인도는 점이 2개 이상 필요해요'); return; }
+        addFeature('path', d.pts, { ...PATH_PRESET[S.pathType].props });
+        S.draft = { kind: 'path', pts: [] }; clearDraftShapes(); changed();
+        return;
+      }
+      if (d.kind === 'building') {
+        if (d.pts.length < 3) { toast('건물은 모서리가 3개 이상 필요해요'); return; }
+        const ring = d.pts.slice();
+        cancelDraft(); finishBuilding(ring);
+      }
+    }
+    function finishBuilding(ring) {
+      const rec = addFeature('building', ring, { name: '', aliases: [], code: '' });
+      changed(); setTool('select'); select(rec.id);
+      setTimeout(() => { const n = $('#formHost [data-k="name"]'); if (n) n.focus(); }, 30);
+    }
+    function placeEntrance(pt) {
+      const nb = S.forceBuilding ? { id: S.forceBuilding, d: 0 } : CampusCore.nearestBuilding(pt, toData().buildings);
+      const ok = nb && nb.d <= 25;
+      addFeature('entrance', pt, { building_id: ok ? nb.id : '', type: S.entType, floor: 1, open_hours: '', accessible: S.entType !== 'stairs', note: '' });
+      if (!ok) toast('근처에 건물이 없어 소속 건물을 비워 뒀어요. 선택해서 지정해 주세요');
+      changed();
+    }
+    $('#dbDone').addEventListener('click', () => finishDraft());
+    $('#dbUndo').addEventListener('click', () => undoPoint());
+    $('#dbStop').addEventListener('click', () => setTool('select'));
+    function undoPoint() { if (S.draft && S.draft.pts.length) { S.draft.pts.pop(); updateDraft(null); } }
+
+    // ---------- 지도 위 포인터 처리 (캡처 단계라 카카오 내부 처리와 무관하게 받음) ----------
+    let down = null;
+    mapEl.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; }, true);
+    mapEl.addEventListener('pointermove', (e) => {
+      if (S.drag) return;
+      const mode = modeForTool(S.tool);
+      if (!mode) return;
+      const px = evPx(e);
+      const sn = e.altKey ? null : snapAt(px, mode, null);
+      showSnap(sn);
+      if (S.draft) updateDraft(sn ? sn.ll : fromPx(px.x, px.y));
+    }, true);
+    mapEl.addEventListener('click', (e) => {
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return; // 지도를 끈 경우
+      if (e.target.closest && e.target.closest('.vh,.mh,.rh,.mapbar,#drawBar')) return;
+      const px = evPx(e);
+      if (S.picking) { setStart(fromPx(px.x, px.y), '지도에서 찍은 지점'); return; }
+      if (S.tool === 'select') { const t = Date.now(); setTimeout(() => { if (S.lastShapeClick < t - 5 && !S.drag) deselect(); }, 60); return; }
+      if (S.tool === 'erase') return;
+      drawClick(px, e.altKey);
+    }, true);
+    mapEl.addEventListener('dblclick', (e) => { if (S.tool !== 'select') { e.stopPropagation(); e.preventDefault(); } }, true);
+    mapEl.addEventListener('contextmenu', (e) => { if (S.draft) { e.preventDefault(); undoPoint(); } }, true);
+
+    function shapeClick(id) {
+      S.lastShapeClick = Date.now();
+      if (S.tool === 'erase' && !S.picking) { removeFeature(id); return; }
+      if (S.picking || S.tool !== 'select') return;
+      select(id);
+    }
+
+    // ---------- 꼭짓점·입구·회전 드래그 ----------
+    function clearHandles() { S.handles.forEach((h) => h.setMap(null)); S.handles = []; }
+    function showHandles(rec) {
+      clearHandles();
+      if (!rec || rec.kind === 'entrance') return;
+      const g = rec.geom, n = g.length;
+      g.forEach((p, i) => {
+        const h = div('vh'); h.title = '끌어서 옮기기, 오른쪽 클릭으로 삭제';
+        h.addEventListener('pointerdown', (e) => startDrag(e, rec, i, 'vertex'));
+        h.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); removeVertex(rec, i); });
+        S.handles.push(overlay(p, h, 30));
+      });
+      const segs = rec.kind === 'building' ? n : n - 1;
+      for (let i = 0; i < segs; i++) {
+        const a = g[i], b = g[(i + 1) % n], m = [r7((a[0] + b[0]) / 2), r7((a[1] + b[1]) / 2)];
+        const h = div('mh'); h.title = '끌어서 꼭짓점 추가';
+        h.addEventListener('pointerdown', (e) => { rec.geom.splice(i + 1, 0, m.slice()); startDrag(e, rec, i + 1, 'vertex', true); });
+        S.handles.push(overlay(m, h, 29));
+      }
+      if (rec.kind === 'building') {
+        const c = centroid(g), cp = toPx(c);
+        const topY = Math.min(...g.map((p) => toPx(p).y));
+        const h = div('rh', '↻'); h.title = '끌어서 회전';
+        h.addEventListener('pointerdown', (e) => startDrag(e, rec, -1, 'rotate'));
+        S.handles.push(overlay(fromPx(cp.x, topY - 30), h, 31));
+      }
+    }
+    function removeVertex(rec, i) {
+      const min = rec.kind === 'building' ? 3 : 2;
+      if (rec.geom.length <= min) { toast(rec.kind === 'building' ? '건물은 꼭짓점이 3개 이상이어야 해요' : '인도는 점이 2개 이상이어야 해요'); return; }
+      rec.geom.splice(i, 1); render(rec); showHandles(rec); changed();
+    }
+    function startDrag(e, rec, index, type, inserted = false) {
+      e.preventDefault(); e.stopPropagation();
+      map.setDraggable(false);
+      const d = { rec, index, type, moved: false, inserted };
+      if (type === 'rotate') {
+        d.orig = rec.geom.map((p) => p.slice());
+        d.c = centroid(rec.geom); d.cpx = toPx(d.c);
+        const p = evPx(e); d.a0 = Math.atan2(p.y - d.cpx.y, p.x - d.cpx.x);
+        d.ents = entrancesOf(rec.id); d.entsOrig = d.ents.map((x) => x.geom.slice());
+      }
+      S.drag = d;
+      document.addEventListener('pointermove', onDragMove);
+      document.addEventListener('pointerup', onDragEnd, { once: true });
+    }
+    function onDragMove(e) {
+      const d = S.drag; if (!d) return;
+      d.moved = true;
+      const px = evPx(e), rec = d.rec;
+      if (d.type === 'rotate') {
+        const deg = ((Math.atan2(px.y - d.cpx.y, px.x - d.cpx.x) - d.a0) * 180) / Math.PI; // 화면에서 시계 방향 = +
+        rec.geom = rotateAround(d.orig, d.c, deg);
+        if (S.rotateEnts && d.ents.length) {
+          const moved = transformPoints(d.entsOrig, d.orig, rec.geom);
+          d.ents.forEach((x, i) => { x.geom = moved.at(i); render(x); });
+        }
+        render(rec);
+        return;
+      }
+      const mode = rec.kind === 'entrance' ? 'entrance' : rec.kind;
+      const sn = e.altKey ? null : snapAt(px, mode, { rec, index: d.index });
+      showSnap(sn);
+      const pt = sn ? sn.ll : fromPx(px.x, px.y);
+      if (d.type === 'entrance') rec.geom = pt; else rec.geom[d.index] = pt;
+      render(rec);
+      if (d.type === 'vertex') { const h = S.handles.at(d.index); if (h && !d.inserted) h.setPosition(LL(pt)); }
+    }
+    function onDragEnd() {
+      document.removeEventListener('pointermove', onDragMove);
+      const d = S.drag; S.drag = null;
+      map.setDraggable(true); showSnap(null);
+      if (!d) return;
+      S.lastShapeClick = Date.now();
+      if (d.moved || d.inserted) changed();
+      if (S.selected === d.rec.id) { showHandles(d.rec); $('#formHost').dataset.id = ''; renderForm(); }
+    }
+
+    function rotateBuilding(rec, deg) {
+      const old = rec.geom.map((p) => p.slice());
+      rec.geom = rotateAround(old, centroid(old), deg);
+      if (S.rotateEnts) {
+        const ents = entrancesOf(rec.id);
+        const moved = transformPoints(ents.map((x) => x.geom), old, rec.geom);
+        ents.forEach((x, i) => { x.geom = moved.at(i); render(x); });
+      }
+      render(rec); showHandles(rec); changed();
+    }
+
+    // ---------- 도구 ----------
+    const HINTS = {
+      select: '지도에서 건물, 입구, 길을 눌러 속성을 고치거나 꼭짓점을 끌어 옮길 수 있어요.',
+      building: '건물 모서리를 차례로 누르고, 첫 점을 다시 누르거나 Enter로 완성해요.',
+      rect: '사각형의 한 모서리를 누르고, 대각선 반대쪽 모서리를 누르면 완성돼요.',
+      entrance: '출입문 위치를 누르세요. 분홍 동그라미가 보이면 건물 외곽선이나 길에 붙는다는 뜻이에요.',
+      path: '길을 따라 누르고, 마지막 점을 한 번 더 누르거나 Enter로 끝내요. 분홍 동그라미가 스냅 위치예요.',
+      erase: '지울 길, 입구, 건물을 누르면 바로 삭제돼요. 실수했으면 위쪽 알림의 되돌리기를 누르세요.',
+    };
+    function setTool(t) {
+      cancelDraft();
+      S.tool = t;
+      if (t !== 'entrance') S.forceBuilding = null;
+      $$('.tool').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tool === t));
+      $('#bldShapes').hidden = t !== 'building';
+      $('#rectAngleWrap').hidden = !(t === 'building' && S.bldShape === 'rect');
+      $('#entranceTypes').hidden = t !== 'entrance';
+      $('#pathTypes').hidden = t !== 'path';
+      const hint = t === 'building' && S.bldShape === 'rect' ? HINTS.rect
+        : t === 'entrance' && S.forceBuilding ? `「${S.store.get(S.forceBuilding)?.props.name || '이름 없는 건물'}」의 입구 위치를 누르세요. 건물 외곽선에 자동으로 붙어요.`
+        : HINTS[t];
+      $('#toolHint').textContent = hint;
+      if (t !== 'select') deselect();
+      $('#drawBar').style.display = t === 'building' || t === 'path' ? 'flex' : 'none';
+      $('#dbDone').hidden = t === 'building' && S.bldShape === 'rect';
+      mapEl.style.cursor = t === 'select' ? '' : t === 'erase' ? 'pointer' : 'crosshair';
+      showModeHint(t === 'select' ? '' : hint + ' (Alt를 누르면 스냅 끄기)');
+    }
+    function showModeHint(t) { const h = $('#modeHint'); h.textContent = t; h.style.display = t ? 'block' : 'none'; }
+
+    $$('.tool').forEach((b) => b.addEventListener('click', () => { S.forceBuilding = null; setTool(b.dataset.tool); }));
+    $('#entranceTypes').innerHTML = Object.entries(ENT).map(([k, v]) =>
+      `<button class="chip" data-v="${k}" aria-pressed="${k === S.entType}"><span class="ent" style="background:${v.color};width:20px;height:20px;line-height:16px;font-size:11px">${v.ch}</span>${v.label}</button>`).join('');
+    $('#pathTypes').innerHTML = Object.entries(PATH_PRESET).map(([k, v]) =>
+      `<button class="chip" data-v="${k}" aria-pressed="${k === S.pathType}"><span class="sw" style="width:20px;height:4px;background:${v.color};border-radius:2px;margin-left:6px"></span>${v.label}</button>`).join('');
+    $('#bldShapes').addEventListener('click', (e) => {
+      const c = e.target.closest('.chip'); if (!c) return;
+      S.bldShape = c.dataset.v; $$('#bldShapes .chip').forEach((x) => x.setAttribute('aria-pressed', x === c)); setTool('building');
+    });
+    const setRectAngle = (v) => { S.rectAngle = Math.max(-90, Math.min(90, Number(v) || 0)); $('#rectAngle').value = S.rectAngle; $('#rectAngleNum').value = S.rectAngle; };
+    $('#rectAngle').addEventListener('input', (e) => setRectAngle(e.target.value));
+    $('#rectAngleNum').addEventListener('change', (e) => setRectAngle(e.target.value));
+    $('#entranceTypes').addEventListener('click', (e) => {
+      const c = e.target.closest('.chip'); if (!c) return;
+      S.entType = c.dataset.v; $$('#entranceTypes .chip').forEach((x) => x.setAttribute('aria-pressed', x === c)); setTool('entrance');
+    });
+    $('#pathTypes').addEventListener('click', (e) => {
+      const c = e.target.closest('.chip'); if (!c) return;
+      S.pathType = c.dataset.v; $$('#pathTypes .chip').forEach((x) => x.setAttribute('aria-pressed', x === c)); setTool('path');
+    });
+
+    // ---------- 선택 ----------
+    function select(id, { pan = false } = {}) {
+      if (S.selected === id) return;
+      deselect();
+      const rec = S.store.get(id); if (!rec) return;
+      S.selected = id;
+      render(rec); showHandles(rec);
+      if (pan) {
+        if (rec.kind === 'entrance') { map.setCenter(LL(rec.geom)); if (map.getLevel() > 2) map.setLevel(2); }
+        else fitTo(rec.geom);
+      }
+      renderForm();
+    }
+    function deselect() {
+      const rec = S.store.get(S.selected);
+      S.selected = null; clearHandles();
+      if (rec) render(rec);
+      renderForm();
+    }
+    function removeFeature(id) {
+      const rec = S.store.get(id); if (!rec) return;
+      S.lastDeleted = { kind: rec.kind, geom: geomOf(rec), props: { ...rec.props }, id };
+      deselect(); unrender(rec); S.store.delete(id); changed();
+      const name = rec.kind === 'building' ? `「${rec.props.name || '이름 없음'}」 건물` : rec.kind === 'entrance' ? '입구' : '인도';
+      toast(`${name}${rec.kind === 'building' ? '을' : '를'} 삭제했어요`, '되돌리기', () => {
+        const d = S.lastDeleted; if (!d) return;
+        addFeature(d.kind, d.geom, d.props, d.id); S.lastDeleted = null; changed(); select(d.id);
+      });
+    }
+
+    // ---------- 속성 폼 ----------
+    function renderForm() {
+      const host = $('#formHost');
+      const rec = S.store.get(S.selected);
+      if (!rec) { host.dataset.id = ''; host.innerHTML = '<p class="empty">선택한 항목이 없어요. 지도에서 하나를 눌러 보세요.</p>'; return; }
+      if (host.contains(document.activeElement) && host.dataset.id === rec.id) return;
+      host.dataset.id = rec.id;
+      const p = rec.props;
+      const sw = (c) => `<span class="ent" style="background:${c};width:20px;height:20px;line-height:16px;font-size:11px">`;
+      let html = '';
+      if (rec.kind === 'building') {
+        const ents = entrancesOf(rec.id);
+        html = `<div class="kind"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:var(--bld)"></span>건물</div>
+          <label class="field"><span>정식 이름</span><input type="text" data-k="name" value="${esc(p.name)}" placeholder="예: 제1공학관"></label>
+          <label class="field"><span>별칭 (쉼표로 구분, 챗봇이 알아들을 이름)</span><input type="text" data-k="aliases" value="${esc((p.aliases || []).join(', '))}" placeholder="예: 공대, 1공, N5"></label>
+          <label class="field"><span>건물 번호</span><input type="text" data-k="code" value="${esc(p.code)}" placeholder="예: 101"></label>
+          <details class="field" ${p.floors || p.hours || (p.facilities || []).length || p.desc || p.memo || (p.floor_info || []).length ? 'open' : ''}><summary class="hint" style="cursor:pointer">챗봇이 답할 건물 정보</summary>
+            <label class="field"><span>층 (챗봇이 그대로 읽어 줘요)</span><input type="text" data-k="floors" value="${esc(p.floors)}" placeholder="예: 지하 1층 ~ 지상 5층"></label>
+            <label class="field"><span>운영시간</span><input type="text" data-k="hours" value="${esc(p.hours)}" placeholder="예: 평일 09:00-22:00, 주말 10:00-17:00"></label>
+            <label class="field"><span>편의시설 (쉼표로 구분)</span><input type="text" data-k="facilities" value="${esc((p.facilities || []).join(', '))}" placeholder="예: 카페, 편의점, 프린터, 열람실"></label>
+            <label class="field"><span>한 줄 소개</span><input type="text" data-k="desc" value="${esc(p.desc)}" placeholder="예: 컴퓨터공학과, 전자공학과 강의실"></label>
+            <div class="field"><span>층별 안내 (층마다 주요 시설을 쉼표로 구분)</span>
+              ${(p.floor_info || []).map((r, i) => `<div class="row" style="gap:4px;align-items:center;margin-top:4px">
+                <input type="number" class="inp" data-fi="${i}" data-ff="floor" value="${esc(r.floor)}" placeholder="층" style="flex:.32" aria-label="층">
+                <input type="text" class="inp" data-fi="${i}" data-ff="items" value="${esc((r.items || []).join(', '))}" placeholder="예: 컴공 과사무실, 강의실 301~310" aria-label="이 층의 시설">
+                <button class="btn" data-act="fidel" data-i="${i}" title="이 층 지우기" style="flex:none;width:38px;padding:0">×</button></div>`).join('')}
+              <button class="btn block" data-act="fiadd" style="margin-top:6px">+ 층 추가</button>
+              <p class="hint">지하는 -1, -2처럼 적어요. 강의실을 "강의실 301~310"처럼 범위로 적으면 챗봇이 "305호 어디야?"에도 답해요. 과 이름은 정식 이름으로 적어도 "컴공", "전자과" 같은 줄임말을 알아들어요.</p>
+            </div>
+            <label class="field"><span>메모 (건물 소개 답변 끝에 붙어요)</span><textarea data-k="memo" rows="2" placeholder="예: 3층 이상은 엘리베이터가 붐비니 계단 추천">${esc(p.memo)}</textarea></label>
+          </details>
+          <div class="field"><span>회전 (지금 방향 ${Math.round(buildingAngle(rec.geom)) % 180}°, 가장 긴 변 기준). 지도 위 노란 ↻ 핸들을 끌어도 돌아가요</span>
+            <div class="row" style="gap:4px">
+              <button class="btn" data-rot="-15" title="반시계 15°">⟲15</button><button class="btn" data-rot="-1" title="반시계 1°">⟲1</button>
+              <button class="btn" data-rot="1" title="시계 1°">1⟳</button><button class="btn" data-rot="15" title="시계 15°">15⟳</button>
+            </div>
+            <div class="row" style="margin-top:6px;align-items:center">
+              <input type="number" class="inp" id="absAngle" min="0" max="179" step="1" placeholder="각도 직접 입력">
+              <button class="btn" data-act="setangle">맞추기</button>
+            </div>
+            <label class="check"><input type="checkbox" id="rotEnts" ${S.rotateEnts ? 'checked' : ''}>입구도 같이 돌리기</label>
+          </div>
+          <div class="field"><span>입구 ${ents.length}곳</span>
+            ${ents.length ? `<ul class="list">${ents.map((e) => { const t = ENT[e.props.type] || ENT.main; return `<li data-sel="${e.id}">${sw(t.color)}${t.ch}</span>${esc(t.label)}<span class="sub">${esc(e.props.floor ?? '')}층</span></li>`; }).join('')}</ul>`
+            : '<p class="empty" style="padding:2px 0">아직 입구가 없어요.</p>'}
+            <button class="btn block" data-act="addent" style="margin-top:6px">이 건물에 입구 추가</button></div>
+          <p class="hint">꼭짓점(흰 네모)을 끌어 옮기고, 가운데 동그라미를 끌면 꼭짓점이 추가돼요. 꼭짓점 오른쪽 클릭은 삭제예요.</p>`;
+      } else if (rec.kind === 'entrance') {
+        const bl = buildings().sort((a, b) => (a.props.name || '').localeCompare(b.props.name || '', 'ko'));
+        html = `<div class="kind"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${(ENT[p.type] || ENT.main).color}"></span>입구</div>
+          <label class="field"><span>소속 건물</span><select data-k="building_id"><option value="">지정 안 됨</option>
+            ${bl.map((b) => `<option value="${b.id}" ${b.id === p.building_id ? 'selected' : ''}>${esc(b.props.name || '이름 없는 건물')}</option>`).join('')}</select></label>
+          <div class="row">
+            <label class="field"><span>종류</span><select data-k="type">${Object.entries(ENT).map(([k, v]) => `<option value="${k}" ${k === p.type ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
+            <label class="field" style="flex:.6"><span>층</span><input type="number" data-k="floor" value="${esc(p.floor)}"></label>
+          </div>
+          <label class="field"><span>여는 시간 (비우면 항상 열림)</span><input type="text" data-k="open_hours" value="${esc(p.open_hours)}" placeholder="08:00-22:00"></label>
+          <label class="check"><input type="checkbox" data-k="accessible" ${p.accessible !== false ? 'checked' : ''}>휠체어로 들어갈 수 있음</label>
+          <label class="field" style="margin-top:8px"><span>메모</span><input type="text" data-k="note" value="${esc(p.note)}" placeholder="예: 학생증 태그 필요"></label>
+          <p class="hint">위도 ${rec.geom[1].toFixed(7)}, 경도 ${rec.geom[0].toFixed(7)}. 마커를 끌어 옮길 수 있어요.</p>`;
+      } else {
+        html = `<div class="kind"><span class="sw" style="width:16px;height:4px;border-radius:2px;background:${pathOpts(p, false).strokeColor}"></span>인도 ${Math.round(lineLen(rec.geom))}m, 꼭짓점 ${rec.geom.length}개</div>
+          <label class="check"><input type="checkbox" data-k="is_stairs" ${p.is_stairs ? 'checked' : ''}>계단이 있음</label>
+          <label class="check"><input type="checkbox" data-k="wheelchair" ${p.wheelchair !== false ? 'checked' : ''}>휠체어로 지나갈 수 있음</label>
+          <label class="check"><input type="checkbox" data-k="indoor" ${p.indoor ? 'checked' : ''}>실내 통로</label>
+          <label class="check"><input type="checkbox" data-k="crosswalk" ${p.crosswalk ? 'checked' : ''}>횡단보도 (현장 기록에서 안 건너고 질러간 경우를 찾아요)</label>
+          <label class="check"><input type="checkbox" data-k="lit" ${p.lit !== false ? 'checked' : ''}>밤에 조명이 있음</label>
+          <label class="check"><input type="checkbox" data-k="active" ${p.active !== false ? 'checked' : ''}>지금 다닐 수 있음 (공사 중이면 끄기)</label>
+          <p class="hint">길 전체를 지우려면 아래 삭제, 꼭짓점 하나만 지우려면 흰 네모를 오른쪽 클릭하세요.</p>`;
+      }
+      html += `<div class="row" style="margin-top:12px"><button class="btn danger" data-act="delete">삭제</button><button class="btn" data-act="done">선택 해제</button></div>`;
+      host.innerHTML = `<div class="form">${html}</div>`;
+    }
+    $('#formHost').addEventListener('input', (e) => {
+      if (e.target.id === 'rotEnts') { S.rotateEnts = e.target.checked; return; }
+      if (e.target.dataset.fi != null) {
+        const rec = S.store.get(S.selected); if (!rec) return;
+        const i = +e.target.dataset.fi, fi = (rec.props.floor_info || []).map((r) => ({ ...r }));
+        if (!fi[i]) return;
+        if (e.target.dataset.ff === 'floor') fi[i].floor = e.target.value === '' ? '' : Number(e.target.value);
+        else fi[i].items = e.target.value.split(',').map((x) => x.trim()).filter(Boolean);
+        rec.props.floor_info = fi; changed(); return;
+      }
+      const k = e.target.dataset.k; if (!k) return;
+      const rec = S.store.get(S.selected); if (!rec) return;
+      let v = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      if (k === 'aliases' || k === 'facilities') v = v.split(',').map((s) => s.trim()).filter(Boolean);
+      if (k === 'floor') v = v === '' ? '' : Number(v);
+      rec.props[k] = v;
+      if (k === 'is_stairs' && v) { rec.props.wheelchair = false; const w = $('#formHost [data-k="wheelchair"]'); if (w) w.checked = false; }
+      render(rec); changed();
+    });
+    $('#formHost').addEventListener('change', (e) => { if (e.target.tagName === 'SELECT') { $('#formHost').dataset.id = ''; renderForm(); renderList(); } });
+    $('#formHost').addEventListener('click', (e) => {
+      const li = e.target.closest('[data-sel]'); if (li) { select(li.dataset.sel, { pan: true }); return; }
+      const rec = S.store.get(S.selected);
+      const rb = e.target.closest('[data-rot]');
+      if (rb && rec) { rotateBuilding(rec, +rb.dataset.rot); $('#formHost').dataset.id = ''; renderForm(); return; }
+      const a = e.target.closest('[data-act]'); if (!a) return;
+      if (a.dataset.act === 'setangle' && rec) {
+        const target = Number($('#absAngle').value);
+        if (!Number.isFinite(target) || $('#absAngle').value === '') { toast('0~179 사이 각도를 입력해 주세요'); return; }
+        let d = target - buildingAngle(rec.geom);
+        d = ((((d + 90) % 180) + 180) % 180) - 90;
+        rotateBuilding(rec, d); $('#formHost').dataset.id = ''; renderForm(); return;
+      }
+      if (a.dataset.act === 'fiadd' && rec) {
+        const fi = (rec.props.floor_info || []).map((r) => ({ ...r }));
+        const nums = fi.map((r) => Number(r.floor)).filter(Number.isFinite);
+        fi.push({ floor: nums.length ? Math.max(...nums) + 1 : 1, items: [] });
+        rec.props.floor_info = fi; changed();
+        $('#formHost').dataset.id = ''; renderForm();
+        const ins = $$('#formHost [data-ff="items"]'); if (ins.length) ins.at(-1).focus();
+        return;
+      }
+      if (a.dataset.act === 'fidel' && rec) {
+        const fi = (rec.props.floor_info || []).slice(); fi.splice(+a.dataset.i, 1);
+        rec.props.floor_info = fi; changed(); $('#formHost').dataset.id = ''; renderForm(); return;
+      }
+      if (a.dataset.act === 'addent' && rec) { const id = rec.id; deselect(); S.forceBuilding = id; setTool('entrance'); return; }
+      if (a.dataset.act === 'delete') removeFeature(S.selected);
+      if (a.dataset.act === 'done') deselect();
+    });
+
+    // ---------- 건물 목록 ----------
+    const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
+    function renderList() {
+      const q = norm($('#listFilter').value);
+      const bl = buildings().filter((b) => !q || [b.props.name, b.props.code, ...(b.props.aliases || [])].some((n) => norm(n).includes(q)))
+        .sort((a, b) => (a.props.name || '').localeCompare(b.props.name || '', 'ko'));
+      $('#bldList').innerHTML = bl.length ? bl.map((b) => {
+        const n = entrancesOf(b.id).length;
+        return `<li data-sel="${b.id}"><span class="sw" style="width:10px;height:10px;border-radius:2px;background:var(--bld)"></span>${esc(b.props.name || '이름 없는 건물')}<span class="sub" style="${n ? '' : 'color:var(--err)'}">입구 ${n}곳</span></li>`;
+      }).join('') : `<li class="empty" style="cursor:default">${S.store.size ? '찾는 건물이 없어요.' : '아직 건물이 없어요. 스카이뷰에서 캠퍼스로 이동한 뒤 건물 그리기로 시작해 보세요.'}</li>`;
+    }
+    $('#listFilter').addEventListener('input', renderList);
+    $('#bldList').addEventListener('click', (e) => { const li = e.target.closest('[data-sel]'); if (li) { setTool('select'); select(li.dataset.sel, { pan: true }); } });
+
+    // ---------- 탭 ----------
+    function setTab(t) {
+      $$('.tabs button').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === t));
+      $$('.pane').forEach((p) => p.classList.toggle('active', p.id === 'pane-' + t));
+      if (t !== 'edit') setTool('select');
+      if (t !== 'route') stopPicking();
+    }
+    $$('.tabs button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+    // ---------- 검증 ----------
+    const KIND_LABEL = {
+      isolated_entrance: '인도와 떨어진 입구', disconnected_path: '끊긴 길', entrance_off_network: '갈 수 없는 입구',
+      dead_end: '막다른 길', entrance_no_building: '건물 미지정 입구', entrance_bad_building: '없는 건물을 가리키는 입구',
+      entrance_far: '건물과 먼 입구', building_no_entrance: '입구 없는 건물',
+    };
+    let netObjs = [], lastIssues = [];
+    const clearNet = () => { netObjs.forEach((o) => o.setMap(null)); netObjs = []; };
+    const topoOpts = () => ({ snapTol: +$('#snapTol').value || 1, entranceTol: +$('#entTol').value || 15 });
+    function runCheck() {
+      const topo = CampusCore.buildTopology(toData(), topoOpts());
+      clearNet();
+      if ($('#showNet').checked) drawNet(topo);
+      lastIssues = topo.issues;
+      const errs = topo.issues.filter((i) => i.level === 'error').length, warns = topo.issues.length - errs;
+      const badge = $('#issueBadge'); badge.hidden = !errs; badge.textContent = errs;
+      const comps = new Set(topo.nodes.filter((n) => n.comp >= 0).map((n) => n.comp)).size;
+      let html = `<div class="summary">노드 ${topo.nodes.length}개, 구간 ${topo.edges.length}개, 이어진 덩어리 ${comps}개.
+        ${errs ? `고쳐야 할 문제 ${errs}건` : '경로를 막는 문제는 없어요'}${warns ? `, 확인할 점 ${warns}건` : ''}.</div>`;
+      const order = { error: 0, warn: 1 };
+      html += topo.issues.slice().sort((a, b) => order[a.level] - order[b.level]).map((i) => `
+        <div class="issue" data-i="${topo.issues.indexOf(i)}"><span class="bar" style="background:${i.level === 'error' ? 'var(--err)' : 'var(--warn)'}"></span>
+        <div><div class="what">${KIND_LABEL[i.kind] || i.kind}</div><p>${esc(i.msg)}</p></div></div>`).join('');
+      if (!topo.edges.length) html = '<p class="hint">검사할 인도가 없어요. 편집 탭에서 인도를 먼저 그려 주세요.</p>';
+      $('#checkOut').innerHTML = html;
+    }
+    function drawNet(topo) {
+      topo.edges.forEach((ed) => {
+        const a = topo.nodes[ed.a], b = topo.nodes[ed.b], main = a.comp === topo.mainComponent;
+        netObjs.push(new K.Polyline({ map, path: [LL(a.ll), LL(b.ll)], zIndex: 10,
+          strokeWeight: main ? 1.5 : 4, strokeColor: main ? '#FFFFFF' : '#D33A2C', strokeOpacity: 0.95,
+          strokeStyle: ed.props?.connector ? 'shortdot' : main ? 'solid' : 'dash' }));
+      });
+      topo.issues.forEach((i) => { if (i.coord) netObjs.push(overlay(i.coord, div(`issue-ring ${i.level === 'error' ? '' : 'warn'}`), 12, false)); });
+    }
+    $('#runCheck').addEventListener('click', runCheck);
+    $('#showNet').addEventListener('change', () => { if ($('#showNet').checked) runCheck(); else clearNet(); });
+    $('#checkOut').addEventListener('click', (e) => {
+      const d = e.target.closest('[data-i]'); if (!d) return;
+      const i = lastIssues[+d.dataset.i];
+      if (i.id && S.store.has(i.id)) select(i.id, { pan: true });
+      else if (i.coord) { map.setCenter(LL(i.coord)); if (map.getLevel() > 2) map.setLevel(2); }
+    });
+
+    // ---------- 경로 테스트 (카카오 지도 위에 그리기) ----------
+    function matchBuilding(q) {
+      const n = norm(q); if (!n) return null;
+      let best = null;
+      buildings().forEach((b) => {
+        const names = [b.props.name, b.props.code, ...(b.props.aliases || [])].map(norm).filter(Boolean);
+        let s = 0;
+        names.forEach((x) => { if (x === n) s = Math.max(s, 3); else if (x.startsWith(n) || n.startsWith(x)) s = Math.max(s, 2); else if (x.includes(n) || n.includes(x)) s = Math.max(s, 1); });
+        if (s && (!best || s > best.s)) best = { b, s };
+      });
+      return best?.b || null;
+    }
+    function renderDatalist() {
+      const opts = new Set();
+      buildings().forEach((b) => [b.props.name, ...(b.props.aliases || [])].forEach((n) => n && opts.add(n)));
+      $('#bldNames').innerHTML = [...opts].map((n) => `<option value="${esc(n)}">`).join('');
+    }
+    $('#dest').addEventListener('input', () => {
+      const v = $('#dest').value.trim(), b = matchBuilding(v);
+      $('#destMatch').innerHTML = !v ? '' : b ? `찾은 건물: <b>${esc(b.props.name || '이름 없는 건물')}</b> (입구 ${entrancesOf(b.id).length}곳)`
+        : '<span style="color:var(--err)">맞는 건물이 없어요. 건물 이름이나 별칭을 확인해 주세요.</span>';
+    });
+    let routeObjs = [], startObjs = [];
+    const clearRoute = () => { routeObjs.forEach((o) => o.setMap(null)); routeObjs = []; };
+    const clearStart = () => { startObjs.forEach((o) => o.setMap(null)); startObjs = []; };
+    function setStart(ll, label, acc) {
+      S.start = ll; stopPicking();
+      $('#startInfo').textContent = `${label}: ${ll[1].toFixed(6)}, ${ll[0].toFixed(6)}${acc ? ` (GPS 오차 약 ±${Math.round(acc)}m)` : ''}`;
+      clearRoute(); clearStart();
+      if (acc) startObjs.push(new K.Circle({ map, center: LL(ll), radius: acc, strokeWeight: 1, strokeColor: '#1D5FD1', strokeOpacity: 0.8, fillColor: '#1D5FD1', fillOpacity: 0.08, zIndex: 4 }));
+      startObjs.push(overlay(ll, div('start-dot'), 20, false));
+    }
+    function stopPicking() { S.picking = false; if (S.tool === 'select') { mapEl.style.cursor = ''; showModeHint(''); } }
+    $('#pickStart').addEventListener('click', () => { setTool('select'); S.picking = true; mapEl.style.cursor = 'crosshair'; showModeHint('출발점을 지도에서 눌러 주세요'); });
+    function locate(cb) {
+      if (!navigator.geolocation) { toast('이 브라우저는 위치 정보를 지원하지 않아요'); return; }
+      navigator.geolocation.getCurrentPosition((p) => cb(p.coords), (err) =>
+        toast(err.code === 1 ? '위치 권한이 거부됐어요. 브라우저 설정에서 허용해 주세요' : '위치를 가져오지 못했어요. 지도에서 직접 찍어 주세요'),
+      { enableHighAccuracy: true, timeout: 10000 });
+    }
+    $('#gpsStart').addEventListener('click', () => locate((c) => { setStart([c.longitude, c.latitude], '내 위치', c.accuracy); map.setCenter(new K.LatLng(c.latitude, c.longitude)); if (map.getLevel() > 3) map.setLevel(3); }));
+    $('#findRoute').addEventListener('click', () => {
+      const out = $('#routeOut');
+      const fail = (m) => { clearRoute(); out.innerHTML = `<div class="result"><p class="err" style="margin:0">${esc(m)}</p></div>`; };
+      const b = matchBuilding($('#dest').value);
+      if (!b) return fail('목적지 건물을 먼저 입력해 주세요.');
+      if (!S.start) return fail('출발점을 먼저 정해 주세요.');
+      const avoid = $('#avoidStairs').checked, openOnly = $('#openOnly').checked;
+      let ents = entrancesOf(b.id);
+      if (!ents.length) return fail(`「${b.props.name}」에 입구가 없어요. 입구를 먼저 찍어 주세요.`);
+      if (avoid) ents = ents.filter((e) => e.props.type !== 'stairs' && e.props.accessible !== false);
+      if (!ents.length) return fail('계단 없이 들어갈 수 있는 입구가 없어요.');
+      if (openOnly) ents = ents.filter((e) => CampusCore.isOpenNow(e.props.open_hours));
+      if (!ents.length) return fail('지금 열려 있는 입구가 없어요.');
+      const topo = CampusCore.buildTopology(toData(), topoOpts());
+      const r = CampusCore.route(topo, S.start, ents.map((e) => e.id), { avoidStairs: avoid });
+      clearRoute();
+      if (r.error) return fail(r.error);
+      const path = r.line.map(LL);
+      routeObjs.push(new K.Polyline({ map, path, strokeWeight: 10, strokeColor: '#FFFFFF', strokeOpacity: 0.9, strokeStyle: 'solid', zIndex: 14 }));
+      routeObjs.push(new K.Polyline({ map, path, strokeWeight: 6, strokeColor: '#0E8A5F', strokeOpacity: 1, strokeStyle: 'solid', zIndex: 15 }));
+      fitTo(r.line);
+      const e = S.store.get(r.entranceId), t = ENT[e.props.type] || ENT.main;
+      const min = Math.max(1, Math.round(r.distance / 72));
+      out.innerHTML = `<div class="result"><div class="big">${Math.round(r.distance)}m, 걸어서 약 ${min}분</div>
+        <p style="margin:4px 0 0">「${esc(b.props.name)}」 ${esc(t.label)}${e.props.floor !== '' && e.props.floor != null ? ` (${esc(e.props.floor)}층)` : ''}으로 안내해요.</p>
+        ${e.props.note ? `<p class="hint">${esc(e.props.note)}</p>` : ''}
+        ${r.snapDistance > 20 ? `<p class="hint" style="color:var(--warn)">출발점이 인도에서 ${Math.round(r.snapDistance)}m 떨어져 있어 가장 가까운 인도에서 시작했어요.</p>` : ''}</div>`;
+    });
+
+    // ---------- 저장 / 불러오기 ----------
+    const fileName = () => 'campus.geojson';
+    function download(obj, name) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 1)], { type: 'application/geo+json' }));
+      a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+    async function saveFile() {
+      const data = toGeoJSON();
+      lsSet(LS_DATA, JSON.stringify(data));
+      if (window.showSaveFilePicker) {
+        try {
+          if (!S.fileHandle) S.fileHandle = await window.showSaveFilePicker({ suggestedName: fileName(), types: [{ description: 'GeoJSON', accept: { 'application/geo+json': ['.geojson', '.json'] } }] });
+          const w = await S.fileHandle.createWritable();
+          await w.write(JSON.stringify(data, null, 1)); await w.close();
+          S.dirty = false; renderCounts();
+          $('#saveInfo').textContent = `${S.fileHandle.name}에 저장했어요. 다음 저장도 같은 파일을 덮어써요.`;
+          toast('저장했어요'); return;
+        } catch (err) { if (err.name === 'AbortError') return; S.fileHandle = null; }
+      }
+      download(data, fileName());
+      S.dirty = false; renderCounts();
+      $('#saveInfo').textContent = '파일을 내려받았어요. 이 브라우저는 같은 파일 덮어쓰기를 지원하지 않아 매번 새 파일로 받아요.';
+    }
+    $('#saveBtn').addEventListener('click', saveFile);
+    $('#importBtn').addEventListener('click', async () => {
+      if (S.dirty && !confirm('저장하지 않은 변경이 있어요. 파일을 열면 지금 내용이 바뀌어요. 계속할까요?')) return;
+      if (window.showOpenFilePicker) {
+        try {
+          const [h] = await window.showOpenFilePicker({ types: [{ description: 'GeoJSON', accept: { 'application/geo+json': ['.geojson', '.json'] } }] });
+          openText(await (await h.getFile()).text(), h.name); S.fileHandle = h;
+          $('#saveInfo').textContent = `${h.name}을 열었어요. 저장하면 이 파일을 덮어써요.`;
+          return;
+        } catch (err) { if (err.name === 'AbortError') return; }
+      }
+      $('#fileIn').click();
+    });
+    $('#fileIn').addEventListener('change', async () => { const f = $('#fileIn').files[0]; if (!f) return; openText(await f.text(), f.name); $('#fileIn').value = ''; });
+    function openText(text, name) {
+      try {
+        const skipped = loadGeoJSON(JSON.parse(text));
+        S.dirty = false; lsSet(LS_DATA, JSON.stringify(toGeoJSON())); renderCounts();
+        toast(`${name}을 열었어요${skipped ? ` (형식이 맞지 않는 ${skipped}개는 건너뜀)` : ''}`);
+      } catch (err) { toast(`파일을 열지 못했어요: ${err.message}`); }
+    }
+    const apiBase = () => $('#apiBase').value.trim().replace(/\/+$/, '');
+    $('#apiBase').value = lsGet(LS_API) || '';
+    $('#apiBase').addEventListener('change', () => lsSet(LS_API, apiBase()));
+    $('#saveServer').addEventListener('click', async () => {
+      if (!apiBase()) return toast('API 주소를 먼저 입력해 주세요');
+      try {
+        const res = await fetch(`${apiBase()}/campus`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toGeoJSON()) });
+        if (!res.ok) throw new Error(`서버 응답 ${res.status}`);
+        S.dirty = false; renderCounts(); toast('서버에 저장했어요');
+      } catch (err) { toast(`서버에 저장하지 못했어요: ${err.message}`); }
+    });
+    $('#loadServer').addEventListener('click', async () => {
+      if (!apiBase()) return toast('API 주소를 먼저 입력해 주세요');
+      if (S.dirty && !confirm('저장하지 않은 변경이 있어요. 서버 데이터로 바꿀까요?')) return;
+      try {
+        const res = await fetch(`${apiBase()}/campus`);
+        if (!res.ok) throw new Error(`서버 응답 ${res.status}`);
+        loadGeoJSON(await res.json()); S.dirty = false; renderCounts(); toast('서버에서 불러왔어요');
+      } catch (err) { toast(`서버에서 불러오지 못했어요: ${err.message}`); }
+    });
+    $('#loadDeployed').addEventListener('click', async () => {
+      if (S.dirty && !confirm('저장하지 않은 변경이 있어요. 배포된 데이터로 바꿀까요?')) return;
+      try {
+        const res = await fetch(CFG.dataUrl || 'data/campus.geojson', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`응답 ${res.status}`);
+        const n = (await res.clone().json()).features?.length || 0;
+        loadGeoJSON(await res.json()); S.dirty = false; renderCounts();
+        toast(n ? `배포된 데이터 ${n}개를 불러왔어요` : '배포된 데이터가 아직 비어 있어요');
+      } catch (err) { toast(`배포된 데이터를 불러오지 못했어요: ${err.message}`); }
+    });
+    $('#exportNet').addEventListener('click', () => {
+      const topo = CampusCore.buildTopology(toData(), topoOpts());
+      if (!topo.edges.length) return toast('내보낼 인도가 없어요');
+      download(CampusCore.topologyToGeoJSON(topo), `campus-network-${new Date().toISOString().slice(0, 10)}.geojson`);
+    });
+    window.addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+    // ---------- 지도 바 ----------
+    $('#gotoIn').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const m = $('#gotoIn').value.match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+      if (!m) return toast('"37.1234, 127.5678" 형식으로 입력해 주세요');
+      let [a, b] = [+m[1], +m[2]];
+      if (Math.abs(a) > 90) [a, b] = [b, a];
+      map.setCenter(new K.LatLng(a, b)); map.setLevel(2);
+    });
+    $('#locBtn').addEventListener('click', () => locate((c) => { map.setCenter(new K.LatLng(c.latitude, c.longitude)); map.setLevel(2); }));
+
+    // ---------- 알림 ----------
+    let toastTimer;
+    function toast(msg, actLabel, act) {
+      const t = $('#toast'), b = $('#toastAct');
+      $('#toastMsg').textContent = msg;
+      b.hidden = !actLabel; b.textContent = actLabel || '';
+      b.onclick = () => { t.style.display = 'none'; act && act(); };
+      t.style.display = 'flex';
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, actLabel ? 6000 : 3200);
+    }
+
+    // ---------- 키보드 ----------
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveFile(); return; }
+      const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
+      if (e.key === 'Escape') { if (typing) document.activeElement.blur(); setTool('select'); stopPicking(); deselect(); return; }
+      if (typing) return;
+      if (e.key === 'Enter' && S.draft) { e.preventDefault(); finishDraft(); return; }
+      if (e.key === 'Backspace' && S.draft && S.draft.pts.length) { e.preventDefault(); undoPoint(); return; }
+      const keys = { v: 'select', b: 'building', e: 'entrance', p: 'path', x: 'erase' };
+      if (keys[e.key.toLowerCase()] && !e.ctrlKey && !e.metaKey && !e.altKey) { setTab('edit'); S.forceBuilding = null; setTool(keys[e.key.toLowerCase()]); }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected) { e.preventDefault(); removeFeature(S.selected); }
+    });
+
+    window.campusEditor = { map, state: S, toGeoJSON, loadGeoJSON, snapAt, toPx };
+
+    // ---------- 시작 ----------
+    const saved = lsGet(LS_DATA);
+    if (saved) { try { loadGeoJSON(JSON.parse(saved), { fit: false }); if (S.store.size) toast(`이전 작업을 불러왔어요 (${S.store.size}개)`); } catch {} }
+    refreshAll();
+    if (!S.store.size) toast('스카이뷰에서 캠퍼스를 찾은 뒤 건물부터 그려 보세요');
+  }
+})();
+
+</script>
+</body>
+</html>

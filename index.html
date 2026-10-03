@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1E2B33">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>캠퍼스 길찾기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+[hidden] { display: none !important; }
+:root {
+  --ink: #1E2B33; --paper: #FFFFFF; --muted: #5E6B66; --rule: #D9E0DB; --soft: #EEF2EF;
+  --go: #0E8A5F; --me: #1D5FD1; --warn: #B8720C; --err: #D33A2C;
+  --sheet-h: 160px;
+  --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --ink: #E8EEEA; --paper: #1B2327; --muted: #9AA7A1; --rule: #33403E; --soft: #25302E; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font: 16px/1.45 "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; color: var(--ink); background: var(--paper); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--me); outline-offset: 2px; }
+#map { position: fixed; inset: 0; }
+
+/* 검색창 */
+.top { position: fixed; z-index: 20; top: calc(var(--safe-t) + 10px); left: 12px; right: 12px; max-width: 560px; margin: 0 auto; }
+.search { display: flex; align-items: center; background: var(--paper); border-radius: 12px; box-shadow: 0 2px 10px rgba(20,30,35,.22); padding: 0 6px 0 14px; height: 50px; }
+.search input { flex: 1; border: 0; background: none; outline: none; font-size: 16px; min-width: 0; height: 100%; }
+.search button { border: 0; background: none; width: 40px; height: 40px; border-radius: 8px; color: var(--muted); font-size: 20px; }
+#suggest { list-style: none; margin: 6px 0 0; padding: 4px; background: var(--paper); border-radius: 12px; box-shadow: 0 2px 10px rgba(20,30,35,.22); max-height: 50dvh; overflow-y: auto; }
+#suggest li { padding: 12px 10px; border-radius: 8px; cursor: pointer; }
+#suggest li:hover, #suggest li[aria-selected="true"] { background: var(--soft); }
+#suggest .al { color: var(--muted); font-size: 13px; }
+
+/* GPS 상태 */
+#gpsBadge { position: fixed; z-index: 15; top: calc(var(--safe-t) + 68px); left: 12px; padding: 5px 10px 5px 8px; border-radius: 14px; background: var(--paper); font-size: 13px; font-weight: 600; box-shadow: 0 1px 6px rgba(20,30,35,.2); display: flex; align-items: center; gap: 6px; }
+#gpsBadge::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+#gpsBadge.good::before { background: var(--go); }
+#gpsBadge.warn::before { background: var(--warn); }
+#gpsBadge.err::before { background: var(--err); }
+
+/* 오른쪽 버튼 */
+.fabs { position: fixed; z-index: 15; right: 12px; bottom: calc(var(--sheet-h) + 12px); display: grid; gap: 8px; transition: bottom .2s; }
+.fab { width: 48px; height: 48px; border-radius: 12px; border: 0; background: var(--paper); box-shadow: 0 2px 8px rgba(20,30,35,.25); font-size: 13px; font-weight: 600; display: grid; place-items: center; }
+.fab.on { color: var(--me); }
+.fab svg { width: 24px; height: 24px; }
+#voiceBtn .x { display: none; }
+#voiceBtn[aria-pressed="false"] { color: var(--muted); }
+#voiceBtn[aria-pressed="false"] .w1, #voiceBtn[aria-pressed="false"] .w2 { display: none; }
+#voiceBtn[aria-pressed="false"] .x { display: inline; }
+#voiceBtn[aria-pressed="true"] { color: var(--go); }
+
+/* 아래 시트 */
+.sheet { position: fixed; z-index: 18; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; background: var(--paper); border-radius: 16px 16px 0 0; box-shadow: 0 -2px 14px rgba(20,30,35,.18); padding: 0 16px calc(12px + var(--safe-b)); max-height: 46dvh; overflow-y: auto; }
+.grab { display: block; width: 100%; height: 22px; border: 0; background: none; padding: 0; margin: 0 0 2px; cursor: pointer; }
+.grab::before { content: ""; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--rule); margin: 9px auto 0; }
+.sumrow { display: flex; align-items: center; gap: 12px; }
+.sumrow .grow { flex: 1; min-width: 0; }
+.sumrow .big { font-size: 26px; }
+.sumrow .line { font-size: 14px; color: var(--muted); margin: 1px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sumrow .btn { min-height: 44px; flex: none; }
+.more { border: 0; background: none; color: var(--me); font-weight: 600; font-size: 14px; padding: 8px 0 2px; cursor: pointer; }
+.sheet h2 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--muted); font-size: 14px; margin: 2px 0 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 2px; }
+.chip { border: 1px solid var(--rule); background: var(--paper); border-radius: 18px; padding: 8px 14px; font-size: 15px; min-height: 40px; }
+.chip[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-weight: 600; }
+.row { display: flex; gap: 8px; margin-top: 10px; }
+.row > * { flex: 1; }
+.btn { min-height: 50px; border-radius: 12px; border: 1px solid var(--rule); background: var(--paper); font-weight: 600; font-size: 16px; padding: 0 14px; }
+.btn.go { background: var(--go); border-color: var(--go); color: #fff; }
+.btn.dark { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.start { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 14px; }
+.start b { font-weight: 600; }
+.start button { margin-left: auto; border: 0; background: none; color: var(--me); font-weight: 600; font-size: 14px; padding: 6px 0 6px 8px; white-space: nowrap; }
+.big { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.note { margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; font-size: 14px; background: var(--soft); }
+.note.warn { color: var(--warn); }
+.note.err { color: var(--err); }
+.ents { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.ents span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.entpick { display: flex; gap: 8px; overflow-x: auto; margin: 12px -18px 0; padding: 2px 18px 4px; scrollbar-width: none; }
+.entpick button { flex: none; display: flex; align-items: center; gap: 8px; border: 1px solid var(--rule); background: var(--paper); border-radius: 12px; padding: 8px 12px 8px 8px; min-height: 48px; text-align: left; font-size: 14px; }
+.entpick button[aria-pressed="true"] { border-color: var(--go); box-shadow: inset 0 0 0 1px var(--go); }
+.entpick .t { display: block; font-weight: 600; line-height: 1.25; }
+.entpick .d { display: block; font-size: 12px; color: var(--muted); line-height: 1.25; }
+.entpick .auto { width: 26px; height: 26px; border-radius: 6px; background: var(--soft); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--go); }
+.label-sm { font-size: 12px; color: var(--muted); margin: 12px 0 0; }
+
+/* 지도 위 표시 */
+.ent { width: 26px; height: 26px; border-radius: 6px; color: #fff; font: 700 13px/22px "IBM Plex Sans KR", sans-serif; text-align: center; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+.ent.target { width: 34px; height: 34px; font-size: 15px; line-height: 30px; border-width: 3px; }
+.ent-tag { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); background: #1E2B33; color: #fff; font: 600 12px "IBM Plex Sans KR", sans-serif; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
+.me-dot { width: 20px; height: 20px; border-radius: 50%; background: #1D5FD1; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.2), 0 1px 4px rgba(0,0,0,.4); position: relative; }
+.me-dot .hd { position: absolute; left: 50%; top: -14px; width: 0; height: 0; margin-left: -6px; border: 6px solid transparent; border-bottom: 10px solid #1D5FD1; }
+.ping { width: 18px; height: 18px; border-radius: 50%; background: #D33A2C; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45); position: relative; }
+.ping::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid #D33A2C; animation: ping 1.4s ease-out infinite; }
+.ping.st { background: #1D5FD1; } .ping.st::after { border-color: #1D5FD1; }
+@keyframes ping { to { transform: scale(3); opacity: 0; } }
+.pin { width: 16px; height: 16px; border-radius: 50%; background: #1E2B33; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45); }
+
+/* 채팅 */
+.chatbtn { color: var(--go) !important; }
+#chat { position: fixed; z-index: 40; top: 0; left: 0; right: 0; height: 100dvh; background: var(--paper); display: flex; flex-direction: column; padding-top: var(--safe-t); overscroll-behavior: contain; }
+@media (min-width: 760px) { #chat { left: auto; width: 420px; box-shadow: -4px 0 20px rgba(20,30,35,.2); } }
+.chat-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--rule); }
+.chat-head h2 { font-size: 17px; margin: 0; flex: 1; }
+.chat-head p { margin: 0; font-size: 12px; color: var(--muted); }
+.chat-head button { border: 0; background: none; width: 40px; height: 40px; font-size: 22px; color: var(--muted); border-radius: 8px; }
+/* 말풍선: 플렉스 대신 일반 블록 배치 + 내용 너비(fit-content)로, 휴대폰 브라우저마다 너비 계산이 달라지는 문제를 피함 */
+#msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px; display: block; }
+.msg { display: block; box-sizing: border-box; width: -webkit-fit-content; width: -moz-fit-content; width: fit-content; max-width: 86%; margin: 0 0 10px; padding: 10px 13px; border-radius: 16px; font-size: 15px; line-height: 1.5; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }
+.msg b { font-weight: 700; }
+.msg.bot { margin-right: auto; background: var(--soft); color: var(--ink); border-bottom-left-radius: 4px; }
+.msg.user { margin-left: auto; background: var(--go); color: #fff; border-bottom-right-radius: 4px; }
+.floors { margin-top: 8px; border-top: 1px solid var(--rule); white-space: normal; }
+.floors .fl { display: grid; grid-template-columns: 4.6em 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); font-size: 14px; line-height: 1.45; }
+.floors .fl:last-child { border-bottom: 0; }
+.floors .fl b { color: var(--go); white-space: nowrap; }
+.acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.acts button { border: 1px solid var(--go); color: var(--go); background: var(--paper); border-radius: 16px; padding: 7px 12px; font-size: 14px; font-weight: 600; min-height: 36px; }
+.steps { margin: 6px 0 0; padding-left: 20px; }
+.steps li { margin: 3px 0; }
+.quick { flex: none; display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 8px 14px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.quick::-webkit-scrollbar { display: none; }
+.quick button { flex: none; border: 1px solid var(--rule); background: var(--paper); border-radius: 16px; padding: 0 12px; height: 36px; line-height: 34px; font-size: 14px; white-space: nowrap; }
+.chat-in { flex: none; display: flex; gap: 8px; padding: 10px 14px calc(10px + var(--safe-b)); }
+.chat-in input { flex: 1; min-width: 0; height: 48px; border: 1px solid var(--rule); border-radius: 24px; padding: 0 16px; font-size: 16px; background: var(--paper); }
+.chat-in button { flex: none; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--go); color: #fff; display: grid; place-items: center; }
+details.dir { margin-top: 10px; }
+details.dir summary { cursor: pointer; color: var(--me); font-weight: 600; font-size: 14px; }
+#xrOverlay { position: fixed; left: 0; right: 0; bottom: 0; padding: 16px 16px calc(16px + var(--safe-b)); }
+#xrOverlay .box { background: var(--paper); border-radius: 12px; padding: 12px 16px; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
+#xrOverlay .big { font-size: 26px; }
+#toast { position: fixed; z-index: 45; left: 50%; top: calc(var(--safe-t) + 110px); transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 14px; border-radius: 12px; font-size: 14px; max-width: calc(100% - 32px); display: none; }
+#fatal { position: fixed; inset: 0; z-index: 50; background: var(--paper); display: grid; place-items: center; padding: 24px; text-align: center; }
+#fatal p { color: var(--muted); max-width: 420px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } .ping::after { animation: none; } }
+</style>
+</head>
+<body>
+<div id="map" aria-label="캠퍼스 지도"></div>
+
+<header class="top">
+  <div class="search" role="search">
+    <input id="q" type="search" placeholder="어디로 갈까요? 예: 도서관" enterkeyhint="search" autocomplete="off" aria-label="건물 검색">
+    <button id="clearQ" aria-label="검색어 지우기" hidden>×</button>
+    <button id="chatBtn" class="chatbtn" aria-label="챗봇에게 물어보기">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>
+    </button>
+  </div>
+  <ul id="suggest" role="listbox" hidden></ul>
+</header>
+
+<div id="gpsBadge">위치 확인 중</div>
+
+<div class="fabs">
+  <button class="fab" id="voiceBtn" aria-label="음성 안내 켜기" aria-pressed="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="w1" d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path class="w2" d="M18.5 7a7 7 0 0 1 0 10"/><path class="x" d="M16 9l5 6M21 9l-5 6"/></svg>
+  </button>
+  <button class="fab" id="layerBtn" aria-label="위성 지도로 보기">위성</button>
+  <button class="fab" id="locBtn" aria-label="내 위치로 이동">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+</div>
+
+<section class="sheet" id="sheet" aria-live="polite"></section>
+<section id="chat" hidden aria-label="캠퍼스 도우미">
+  <div class="chat-head">
+    <div style="flex:1"><h2>캠퍼스 도우미</h2><p>건물 위치, 운영시간, 층, 출입구를 물어보세요 · v2026.10.02-10</p></div>
+    <button id="chatClose" aria-label="지도로 돌아가기">×</button>
+  </div>
+  <div id="msgs" aria-live="polite"></div>
+  <div class="quick" id="quick"></div>
+  <form class="chat-in" id="chatForm">
+    <input id="chatIn" type="text" placeholder="예: 도서관 몇 시까지 해?" enterkeyhint="send" autocomplete="off" aria-label="질문 입력">
+    <button aria-label="보내기"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+  </form>
+</section>
+<div id="toast" role="status"></div>
+<div id="xrOverlay" hidden><div class="box"><div class="big" id="xrText">높이 재는 중</div><p class="sub" id="xrSub">휴대폰을 앞으로 든 채로 계단을 오르내리세요</p><div class="row"><button class="btn dark" id="xrEnd">그만하기</button></div></div></div>
+<div id="fatal" hidden><div><h2 id="fatalT"></h2><p id="fatalP"></p></div></div>
+
+<script src="js/config.js?v=2026.10.02-10"></script>
+<script src="js/config.local.js?v=2026.10.02-10"></script>
+<script src="js/core.js?v=2026.10.02-10"></script>
+<script src="js/kakao.js?v=2026.10.02-10"></script>
+<script src="js/chatbot.js?v=2026.10.02-10"></script>
+<script src="js/guide.js?v=2026.10.02-10"></script>
+<script>
+(async () => {
+  const C = Object.assign({ turnAnnounce: 15, offRouteDistance: 15, walkSpeed: 1.35, gpsGoodAccuracy: 20, gpsMaxAccuracy: 100, arriveRadius: 15, arEnterRadius: 3, offCampusDistance: 300, floorChange: 2.5, floorHeight: 3.5, mapCenter: [36.5, 127.8], dataUrl: 'data/campus.geojson', campusName: '캠퍼스' }, window.CAMPUS_CONFIG || {});
+  // 현장 테스트 모드: 주소 끝에 ?test=1 을 붙여 한 번 열면 켜지고, 테스트 기록 화면에서 끌 수 있어요
+  let TEST = false;
+  try {
+    const tp = new URLSearchParams(location.search).get('test');
+    if (tp === '1') localStorage.setItem('campus-test-mode', 'on');
+    if (tp === '0') localStorage.removeItem('campus-test-mode');
+    TEST = localStorage.getItem('campus-test-mode') === 'on';
+  } catch {}
+  const APP_VERSION = '2026.10.02-10'; // 배포 확인용: 화면 아래에 이 값이 보이면 최신 파일이에요
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ENT = {
+    main: { label: '정문', ch: '정', color: '#0E8A5F' }, side: { label: '보조 출입구', ch: '보', color: '#1B8FA6' },
+    stairs: { label: '계단 출입구', ch: '계', color: '#D9901A' }, elevator: { label: '엘리베이터', ch: 'E', color: '#7B4BC4' },
+    parking: { label: '주차장 연결', ch: 'P', color: '#5E6B66' },
+  };
+  const S = {
+    buildings: [], entrances: [], data: null, topo: null,
+    pos: null, follow: true, dest: null, start: null, picking: false,
+    opts: { avoidStairs: false, openOnly: false }, nav: null, view: 'idle', mapType: 'ROADMAP',
+    autoRoute: false, lastReroute: 0, wakeLock: null, forcedEnt: null, sheetOpen: false,
+  };
+  function fatal(t, p) { $('#fatalT').textContent = t; $('#fatalP').textContent = p; $('#fatal').hidden = false; }
+
+  // ---------- 카카오맵 ----------
+  let K;
+  try { K = await loadKakaoMaps(C.kakaoKey); }
+  catch (e) {
+    if (e.message === 'TIMEOUT') return fatal('지도가 응답하지 않아요', '광고 차단 확장 프로그램을 끄거나 시크릿 창에서 다시 열어 주세요. 관리자: 카카오 앱의 제품 설정에서 카카오맵이 켜져 있는지 확인해 주세요.');
+    if (e.message === 'NO_KEY') return fatal('지도 키가 설정되지 않았어요', '관리자: js/config.local.js의 kakaoKey에 카카오 JavaScript 키를 넣고 다시 배포해 주세요.');
+    return fatal('지도를 불러오지 못했어요', `잠시 후 다시 열어 주세요. 관리자: 지금 주소(${location.origin})가 카카오 JavaScript SDK 도메인에 등록돼 있는지 확인해 주세요.`);
+  }
+  const map = new K.Map($('#map'), { center: new K.LatLng(C.mapCenter[0], C.mapCenter[1]), level: 4 });
+  const LL = (a) => new K.LatLng(a[1], a[0]);
+  const r7 = (n) => Math.round(n * 1e7) / 1e7;
+  const arr = (ll) => [r7(ll.getLng()), r7(ll.getLat())];
+  const distM = (a, b) => { const p = CampusCore.makeProjection(a[1], a[0]).fwd(b); return Math.hypot(p[0], p[1]); };
+  const div = (cls, html = '') => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; return d; };
+  const overlay = (pos, el, z, yAnchor = 0.5) => new K.CustomOverlay({ map, position: LL(pos), content: el, xAnchor: 0.5, yAnchor, zIndex: z, clickable: false });
+  const sheetH = () => $('#sheet').getBoundingClientRect().height;
+  function fit(pts) {
+    if (!pts.length) return;
+    const b = new K.LatLngBounds(); pts.forEach((p) => b.extend(LL(p)));
+    try { map.setBounds(b, 90, 70, Math.round(sheetH()) + 20, 30); } catch { map.setBounds(b); }
+  }
+  new ResizeObserver(() => document.documentElement.style.setProperty('--sheet-h', `${Math.round(sheetH())}px`)).observe($('#sheet'));
+  window.addEventListener('resize', () => map.relayout());
+
+  // ---------- 알림 ----------
+  let toastT;
+  function toast(m, ms = 3000) { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, ms); }
+
+  // ---------- 데이터 ----------
+  try {
+    const res = await fetch(C.dataUrl, { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    S.data = await res.json();
+  } catch { S.data = { features: [] }; }
+  const d = { buildings: [], entrances: [], paths: [] };
+  (S.data.features || []).forEach((f) => {
+    const { kind, id, ...props } = f.properties || {}, g = f.geometry || {};
+    if (kind === 'building' && g.type === 'Polygon') d.buildings.push({ id, ring: g.coordinates[0], props });
+    else if (kind === 'entrance' && g.type === 'Point') d.entrances.push({ id, coord: g.coordinates, props });
+    else if (kind === 'path' && g.type === 'LineString') d.paths.push({ id, coords: g.coordinates, props });
+  });
+  S.buildings = d.buildings; S.entrances = d.entrances;
+  S.topo = d.paths.length ? CampusCore.buildTopology(d) : null;
+  const entsOf = (bid) => S.entrances.filter((e) => e.props.building_id === bid);
+  const campusPts = [...d.buildings.flatMap((b) => b.ring), ...d.paths.flatMap((p) => p.coords)];
+
+  // ---------- 검색 ----------
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
+  function search(q) {
+    const n = norm(q); if (!n) return [];
+    return S.buildings.map((b) => {
+      let s = 0;
+      [b.props.name, b.props.code, ...(b.props.aliases || [])].map(norm).filter(Boolean).forEach((x) => {
+        if (x === n) s = Math.max(s, 3); else if (x.startsWith(n) || n.startsWith(x)) s = Math.max(s, 2); else if (x.includes(n) || n.includes(x)) s = Math.max(s, 1);
+      });
+      return { b, s };
+    }).filter((x) => x.s).sort((a, b) => b.s - a.s || (a.b.props.name || '').localeCompare(b.b.props.name || '', 'ko')).slice(0, 8).map((x) => x.b);
+  }
+  const q = $('#q'), sug = $('#suggest');
+  let sugList = [];
+  q.addEventListener('input', () => {
+    $('#clearQ').hidden = !q.value;
+    sugList = search(q.value);
+    sug.hidden = !q.value;
+    sug.innerHTML = sugList.length ? sugList.map((b, i) => `<li role="option" data-i="${i}">${esc(b.props.name || '이름 없는 건물')}${(b.props.aliases || []).length ? `<div class="al">${esc(b.props.aliases.join(', '))}</div>` : ''}</li>`).join('')
+      : `<li style="cursor:default;color:var(--muted)">찾는 건물이 없어요. 다른 이름으로 검색해 보세요.</li>`;
+  });
+  q.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const sentence = /(\?|몇|언제|어디|있어|열어|닫아|층|입구|엘리베이터|휠체어|알려|소개)/.test(q.value);
+    if (sugList[0] && !sentence) pickBuilding(sugList[0]);
+    else if (q.value.trim()) { const t = q.value.trim(); q.value = ''; sug.hidden = true; openChat(); ask(t); }
+  });
+  sug.addEventListener('click', (e) => { const li = e.target.closest('[data-i]'); if (li) pickBuilding(sugList[+li.dataset.i]); });
+  $('#clearQ').addEventListener('click', () => { q.value = ''; $('#clearQ').hidden = true; sug.hidden = true; endAll(); });
+  function pickBuilding(b) { q.value = b.props.name || ''; $('#clearQ').hidden = false; sug.hidden = true; q.blur(); selectBuilding(b); }
+
+  // ---------- 지도 그리기 ----------
+  let destObjs = [], routeObjs = [], startObj = null;
+  const clear = (list) => { list.forEach((o) => o.setMap(null)); list.length = 0; };
+  function drawDest(b, targetId) {
+    clear(destObjs);
+    destObjs.push(new K.Polygon({ map, path: b.ring.map(LL), strokeWeight: 2, strokeColor: '#0E8A5F', strokeOpacity: 1, fillColor: '#0E8A5F', fillOpacity: 0.15, zIndex: 2 }));
+    const tid = targetId || S.forcedEnt;
+    entsOf(b.id).forEach((e) => {
+      const t = ENT[e.props.type] || ENT.main, isT = e.id === tid;
+      const el = div('', `<div class="ent${isT ? ' target' : ''}" style="background:${t.color};cursor:pointer">${t.ch}</div>${isT ? `<div class="ent-tag">${esc(t.label)}</div>` : ''}`);
+      el.style.position = 'relative';
+      el.setAttribute('role', 'button'); el.setAttribute('aria-label', `${t.label} 선택`);
+      el.addEventListener('click', (ev) => { ev.stopPropagation(); chooseEnt(e.id); });
+      destObjs.push(new K.CustomOverlay({ map, position: LL(e.coord), content: el, xAnchor: 0.5, yAnchor: 0.5, zIndex: isT ? 9 : 6, clickable: true }));
+    });
+  }
+  function drawRoute(r) {
+    clear(routeObjs);
+    const line = r.line;
+    if (line.length >= 2 && r.snapDistance > 3) routeObjs.push(new K.Polyline({ map, path: [LL(line[0]), LL(line[1])], strokeWeight: 4, strokeColor: '#5E6B66', strokeOpacity: 0.9, strokeStyle: 'shortdash', zIndex: 5 }));
+    const main = line.slice(1).map(LL);
+    routeObjs.push(new K.Polyline({ map, path: main, strokeWeight: 11, strokeColor: '#FFFFFF', strokeOpacity: 0.95, strokeStyle: 'solid', zIndex: 6 }));
+    routeObjs.push(new K.Polyline({ map, path: main, strokeWeight: 7, strokeColor: '#0E8A5F', strokeOpacity: 1, strokeStyle: 'solid', zIndex: 7 }));
+  }
+  // 호실·계단 위치 표시 (챗봇이 DB 노드로 찾은 곳). [{ ll, label, stairs }]
+  const pingObjs = [];
+  function setPings(list) {
+    clear(pingObjs);
+    list.forEach((n) => {
+      const el = div('', `<div class="ping${n.stairs ? ' st' : ''}"></div><div class="ent-tag" style="top:28px">${esc(n.label)}</div>`);
+      el.style.position = 'relative';
+      pingObjs.push(overlay(n.ll, el, 11));
+    });
+  }
+
+  // ---------- 실내 안내 (2D + 층) ----------
+  // 층 이동은 아직 센서 없이 사용자가 "N층으로 올라왔어요"를 눌러서 알려 줌
+  // ponytail: 노드 연결(route_edges)이 비어 있어 층 안에서는 직선 방향·거리만 안내. 연결이 생기면 그래프 경로로
+  const DIR8 = ['북', '북동', '동', '남동', '남', '남서', '서', '북서'];
+  function dirText(from, to) {
+    const p = CampusCore.makeProjection(from[1], from[0]).fwd(to);
+    return `${DIR8[Math.round(((Math.atan2(p[0], p[1]) * 180) / Math.PI + 360) / 45) % 8]}쪽 약 ${Math.max(1, Math.round(Math.hypot(p[0], p[1])))}m`;
+  }
+  function startIndoor() {
+    const I = S.indoor; if (!I) return;
+    const e = S.entrances.find((x) => x.id === S.nav?.r.entranceId);
+    I.floor = Number(e?.props.floor) || 1;
+    I.from = e ? e.coord : null;
+    if (I.node.floor == null) I.node.floor = I.floor; // 층 모르는 노드는 같은 층으로
+    // 목표 호실과 가장 가까운 계단 (지금 층에 있는 것 우선)
+    const st = nodes.filter((n) => n.node_type === 'stairs' && n.building?.code === I.node.code && n.latitude != null)
+      .map((n) => ({ n, ll: [n.longitude, n.latitude] }))
+      .sort((a, b) => (a.n.floor !== I.floor) - (b.n.floor !== I.floor) || distM(a.ll, I.node.ll) - distM(b.ll, I.node.ll));
+    I.stairs = st[0] ? st[0].ll : null;
+    S.view = 'indoor'; clear(routeObjs); drawIndoor(); renderSheet();
+    startAR(true); // 앱이면 바로 AR로 전환 (못 쓰면 그대로 2D 안내)
+  }
+  function drawIndoor() {
+    const I = S.indoor, up = I.floor !== I.node.floor;
+    setPings([{ ...I.node }, ...(up && I.stairs ? [{ ll: I.stairs, label: '계단', stairs: true }] : [])]);
+    fit([I.node.ll, ...(up && I.stairs ? [I.stairs] : []), ...(I.from ? [I.from] : [])]);
+  }
+  // ---------- 실내 AR 길안내 (안드로이드 앱 전용) ----------
+  // 건물에 들어온 걸로 판정되면(입구 도착 또는 버튼) AR 화면이 열려요. ARCore 클라우드 앵커로 위치를 잡고,
+  // 목적지 앞까지 경로 위에 3D 화살표를 띄워요. 닫으면 2D 실내 안내로 돌아와요. 네이티브: android/.../IndoorArPlugin.java
+  const CAP = window.Capacitor?.isNativePlatform?.() ? window.Capacitor : null;
+  // 입구에서 arEnterRadius(3m) 안이면 AR이 자동으로 켜져요. 앵커 없이 "지금 입구 앞"으로 보고 시작하니 입구 앞에서만 켜야 정확해요
+  const nearEntrance = (I) => S.pos && I.from && distM(S.pos.ll, I.from) <= C.arEnterRadius;
+  async function startAR(auto) {
+    const I = S.indoor; if (!CAP || !I || I.arBusy) return;
+    I.arBusy = true;
+    try {
+      if (I.arOk == null) { I.arOk = !!(await CAP.nativePromise('IndoorAr', 'isAvailable', { code: I.node.code })).available; renderSheet(); }
+      if (!I.arOk) { if (!auto) toast('이 건물은 AR 안내를 아직 쓸 수 없어요', 3500); return; }
+      if (auto && !nearEntrance(I)) return; // 아직 입구에서 멀면 기다림 (GPS가 갱신되면 onFix에서 다시 확인)
+      I.arAuto = true;
+      const r = await CAP.nativePromise('IndoorAr', 'start', { lat: I.node.ll[1], lng: I.node.ll[0], floor: Number(I.node.floor) || 0, name: I.node.label,
+        ...(I.from ? { entLat: I.from[1], entLng: I.from[0], entFloor: I.floor } : {}) });
+      if (S.indoor !== I) return;
+      if (r.floor > 0) { I.floor = r.floor; if (r.floor === Number(I.node.floor)) I.moved = true; } // AR이 알아낸 지금 층
+    } catch { I.arOk = false; toast('AR을 시작하지 못했어요. 지도로 안내할게요.', 4000); }
+    finally { I.arBusy = false; if (S.indoor === I) { drawIndoor(); renderSheet(); } }
+  }
+  // ---------- 층 자동 감지 (WebXR AR: 안드로이드 크롬. 카메라로 위아래 이동 거리를 잼) ----------
+  // 저장된 클라우드 앵커는 웹에서 못 읽으므로, 감지를 시작한 곳(지금 층)을 기준으로 상대 높이만 씀
+  let xrOk = false, xrSession = null;
+  if (navigator.xr) navigator.xr.isSessionSupported('immersive-ar').then((ok) => { xrOk = ok; if (S.view === 'indoor') renderSheet(); }).catch(() => {});
+  $('#xrEnd').addEventListener('click', () => xrSession && xrSession.end());
+  async function startXR() {
+    const I = S.indoor; if (!I || xrSession) return;
+    try {
+      const s = await navigator.xr.requestSession('immersive-ar', { optionalFeatures: ['dom-overlay'], domOverlay: { root: $('#xrOverlay') } });
+      xrSession = s; $('#xrOverlay').hidden = false;
+      const gl = document.createElement('canvas').getContext('webgl', { xrCompatible: true });
+      s.updateRenderState({ baseLayer: new XRWebGLLayer(s, gl) });
+      const ref = await s.requestReferenceSpace('local');
+      const base = I.floor; let y0 = null;
+      s.addEventListener('end', () => { xrSession = null; $('#xrOverlay').hidden = true; drawIndoor(); renderSheet(); });
+      const onFrame = (t, frame) => {
+        s.requestAnimationFrame(onFrame);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, s.renderState.baseLayer.framebuffer); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+        const pose = frame.getViewerPose(ref);
+        if (!pose || pose.emulatedPosition) { $('#xrSub').textContent = '위치를 잡는 중이에요. 주변을 천천히 비춰 주세요'; return; }
+        const y = pose.transform.position.y;
+        if (y0 == null) y0 = y;
+        const dy = y - y0, f = base + CampusCore.floorDelta(dy, C);
+        $('#xrText').textContent = `지금 ${f}층 (${dy >= 0 ? '+' : ''}${dy.toFixed(1)}m)`;
+        $('#xrSub').textContent = f === I.node.floor ? `${I.node.floor}층이에요!` : `${I.node.floor}층까지 ${I.node.floor > f ? '올라' : '내려'}가세요`;
+        if (f !== I.floor) { I.floor = f; if (f === I.node.floor) { I.moved = true; setTimeout(() => s.end(), 1200); } }
+      };
+      s.requestAnimationFrame(onFrame);
+    } catch { toast('AR을 시작하지 못했어요. 도착하면 버튼으로 알려 주세요.', 4000); }
+  }
+  function indoorHtml(grab) {
+    const I = S.indoor, b = S.dest, tf = I.node.floor, up = I.floor !== tf;
+    const verb = tf > I.floor ? '올라' : '내려';
+    const head = `${grab}<h2>「${esc(b.props.name)}」 ${esc(I.node.label)}</h2><p class="line">지금 ${I.floor}층</p>`;
+    if (up) return `${head}<p class="note">${I.stairs ? `파란 점 계단으로 가서 (${I.from ? `입구에서 ${dirText(I.from, I.stairs)}` : '지도 참고'}) ` : '계단이나 엘리베이터로 '}${tf}층으로 ${verb}가세요.</p>
+      ${I.arOk ? '<div class="row"><button class="btn go" data-act="ar">AR로 길 안내 (입구 앞에서)</button></div>' : ''}
+      ${xrOk ? '<div class="row"><button class="btn go" data-act="xr">AR로 층 자동 감지</button></div>' : ''}
+      <div class="row"><button class="btn${xrOk ? '' : ' go'}" data-act="floorUp">${tf}층으로 ${verb}왔어요</button><button class="btn" data-act="end">끝내기</button></div>`;
+    const from = I.stairs && I.moved ? I.stairs : I.from;
+    return `${head}<p class="note">빨간 점이 ${esc(I.node.label)}예요.${from ? ` ${I.moved ? '계단' : '입구'}에서 ${dirText(from, I.node.ll)}.` : ''}</p>
+      ${I.arOk ? '<div class="row"><button class="btn go" data-act="ar">AR로 길 안내 (입구 앞에서)</button></div>' : ''}
+      <div class="row"><button class="btn dark" data-act="end">다 왔어요</button></div>`;
+  }
+  function drawStartPin() {
+    if (startObj) { startObj.setMap(null); startObj = null; }
+    if (S.start) startObj = overlay(S.start, div('pin'), 8);
+  }
+
+  // ---------- GPS ----------
+  let meObj = null, accObj = null, meEl = null;
+  function setBadge() {
+    const b = $('#gpsBadge');
+    if (!S.pos) return;
+    const a = Math.round(S.pos.acc);
+    b.className = a <= C.gpsGoodAccuracy ? 'good' : a <= 50 ? 'warn' : 'err';
+    b.textContent = a <= C.gpsGoodAccuracy ? `GPS ±${a}m` : a <= 50 ? `GPS ±${a}m, 조금 부정확` : `GPS ±${a}m, 부정확`;
+  }
+  function drawMe() {
+    const p = S.pos; if (!p) return;
+    if (!meObj) { meEl = div('me-dot'); meObj = new K.CustomOverlay({ map, position: LL(p.ll), content: meEl, xAnchor: 0.5, yAnchor: 0.5, zIndex: 20, clickable: false }); }
+    meObj.setPosition(LL(p.ll));
+    meEl.innerHTML = Number.isFinite(p.heading) && p.speed > 0.5 ? `<div class="hd" style="transform:rotate(${p.heading}deg);transform-origin:6px 21px"></div>` : '';
+    if (!accObj) accObj = new K.Circle({ map, center: LL(p.ll), radius: p.acc, strokeWeight: 1, strokeColor: '#1D5FD1', strokeOpacity: 0.6, fillColor: '#1D5FD1', fillOpacity: 0.1, zIndex: 3 });
+    accObj.setPosition(LL(p.ll));
+    accObj.setRadius(p.acc);
+  }
+  function onFix(p) {
+    const fix = { ll: [p.coords.longitude, p.coords.latitude], acc: p.coords.accuracy, t: p.timestamp || Date.now(), heading: p.coords.heading, speed: p.coords.speed };
+    // 직전 위치보다 훨씬 나쁜 값이 잠깐 튀면 무시
+    if (S.pos && fix.acc > Math.max(60, S.pos.acc * 3) && fix.t - S.pos.t < 10000) return;
+    const first = !S.pos;
+    S.pos = fix; setBadge(); drawMe();
+    if (S.follow && (S.nav || first)) map.panTo(LL(fix.ll));
+    if (first && !S.dest && campusPts.length && distToCampus(fix.ll) < C.offCampusDistance) { map.setCenter(LL(fix.ll)); map.setLevel(3); }
+    if (S.autoRoute && S.dest && fix.acc <= 50) { S.autoRoute = false; findRoute(); return; }
+    if (S.view === 'indoor' && S.indoor && !S.indoor.arAuto && !S.indoor.arBusy && nearEntrance(S.indoor)) startAR(true); // 입구 3m 안에 오면 AR로 전환
+    if (S.nav && S.nav.live) liveUpdate();
+    else if (S.view === 'dest') renderSheet();
+  }
+  function onGpsErr(e) {
+    const b = $('#gpsBadge');
+    if (e.code === 1) { b.className = 'err'; b.textContent = '위치 권한 꺼짐'; S.gpsDenied = true; if (S.view === 'dest') renderSheet(); }
+    else if (!S.pos) { b.className = ''; b.textContent = '위치 찾는 중'; }
+  }
+  if (navigator.geolocation) navigator.geolocation.watchPosition(onFix, onGpsErr, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+  else { $('#gpsBadge').className = 'err'; $('#gpsBadge').textContent = '위치 기능 없음'; }
+  function distToCampus(ll) {
+    if (!S.topo || !S.topo.edges.length) return Infinity;
+    const p = S.topo.proj.fwd(ll);
+    let best = Infinity;
+    S.topo.edges.forEach((ed) => {
+      const a = S.topo.nodes[ed.a].xy, b = S.topo.nodes[ed.b].xy;
+      const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+      const t = L2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2)) : 0;
+      best = Math.min(best, Math.hypot(a[0] + t * dx - p[0], a[1] + t * dy - p[1]));
+    });
+    return best;
+  }
+
+  K.event.addListener(map, 'dragstart', () => { S.follow = false; $('#locBtn').classList.remove('on'); });
+  $('#locBtn').addEventListener('click', () => {
+    if (!S.pos) { toast(S.gpsDenied ? '위치 권한이 꺼져 있어요. 브라우저 설정에서 허용해 주세요.' : '아직 위치를 찾는 중이에요.'); return; }
+    S.follow = true; $('#locBtn').classList.add('on');
+    map.panTo(LL(S.pos.ll)); if (map.getLevel() > 3) map.setLevel(3);
+  });
+  $('#layerBtn').addEventListener('click', () => {
+    S.mapType = S.mapType === 'ROADMAP' ? 'HYBRID' : 'ROADMAP';
+    map.setMapTypeId(K.MapTypeId[S.mapType]);
+    $('#layerBtn').textContent = S.mapType === 'ROADMAP' ? '위성' : '지도';
+  });
+
+  // ---------- 출발점 ----------
+  function startInfo() {
+    if (S.start) return { ll: S.start, label: '지도에서 고른 곳', manual: true };
+    if (S.pos && S.pos.acc <= C.gpsMaxAccuracy) return { ll: S.pos.ll, label: `내 위치 (±${Math.round(S.pos.acc)}m)`, manual: false };
+    return null;
+  }
+  K.event.addListener(map, 'click', (e) => {
+    if (!S.picking) return;
+    S.picking = false; S.start = arr(e.latLng); drawStartPin();
+    toast('출발점을 정했어요');
+    if (S.nav) findRoute(); else renderSheet();
+  });
+
+  // ---------- 입구 고르기 ----------
+  const withRo = (w) => { const c = String(w).at(-1), k = c ? c.charCodeAt(0) - 0xac00 : -1; return k >= 0 && k < 11172 && k % 28 && k % 28 !== 8 ? '으로' : '로'; };
+  function entChoices() {
+    const st = startInfo();
+    return entsOf(S.dest.id).map((e) => {
+      const t = ENT[e.props.type] || ENT.main;
+      let d = null;
+      if (st && S.topo) { const r = CampusCore.route(S.topo, st.ll, [e.id], { avoidStairs: S.opts.avoidStairs }); if (!r.error) d = r.distance; }
+      const closed = e.props.open_hours && !CampusCore.isOpenNow(e.props.open_hours);
+      const stairs = e.props.type === 'stairs' || e.props.accessible === false;
+      return { e, t, d, closed, stairs };
+    }).sort((a, b) => (a.d ?? 1e9) - (b.d ?? 1e9));
+  }
+  function entPickerHtml(currentId) {
+    const list = entChoices();
+    if (list.length < 2) return '';
+    const auto = !S.forcedEnt;
+    return `<p class="label-sm">들어갈 입구 ${list.length}곳 중 고르기 (지도의 입구 표시를 눌러도 돼요)</p><div class="entpick">
+      <button data-ent="" aria-pressed="${auto}"><span class="auto">자동</span><span><span class="t">가장 가까운 입구</span><span class="d">${auto && currentId ? (() => { const l = (ENT[S.entrances.find((x) => x.id === currentId)?.props.type] || ENT.main).label; return esc(l) + withRo(l) + ' 안내 중'; })() : '조건에 맞는 곳 중'}</span></span></button>
+      ${list.map(({ e, t, d, closed, stairs }) => `<button data-ent="${esc(e.id)}" aria-pressed="${S.forcedEnt === e.id}">
+        <span class="ent" style="background:${t.color};width:26px;height:26px;line-height:22px;font-size:12px">${t.ch}</span>
+        <span><span class="t">${esc(t.label)}${e.props.floor !== '' && e.props.floor != null ? ` ${esc(e.props.floor)}층` : ''}</span>
+        <span class="d">${d != null ? `${Math.round(d)}m` : '경로 없음'}${closed ? ', 지금 닫힘' : ''}${stairs ? ', 계단' : ''}</span></span></button>`).join('')}
+    </div>`;
+  }
+  function chooseEnt(id) {
+    if (!S.dest) return;
+    S.forcedEnt = id || null;
+    const e = S.entrances.find((x) => x.id === id);
+    if (e && e.props.open_hours && !CampusCore.isOpenNow(e.props.open_hours)) toast('이 입구는 지금 닫혀 있을 수 있어요');
+    const keepOpen = S.sheetOpen;
+    if (S.view === 'nav' || S.view === 'arrived') { S.view = 'dest'; const r = findRoute(); S.sheetOpen = keepOpen; if (r.error) drawDest(S.dest); renderSheet(); }
+    else { drawDest(S.dest); renderSheet(); }
+  }
+
+  // ---------- 화면 상태 ----------
+  function selectBuilding(b) {
+    if (TL.cur) trialFinish('no_answer', '다른 건물을 골라 중단');
+    S.dest = b; S.nav = null; S.forcedEnt = null; S.sheetOpen = false; clear(routeObjs); releaseWake(); setPings([]); S.indoor = null;
+    S.view = 'dest'; drawDest(b); renderSheet();
+    fit(b.ring);
+  }
+  function endAll() {
+    if (TEST && TL.cur && S.view !== 'verdict' && S.view !== 'arrived') { S.view = 'verdict'; releaseWake(); try { speechSynthesis.cancel(); } catch {} renderSheet(); return; }
+    if (TL.cur) trialFinish('no_answer');
+    S.dest = null; S.nav = null; S.view = 'idle'; S.picking = false; S.forcedEnt = null;
+    try { if (canSpeak) speechSynthesis.cancel(); } catch {}
+    clear(destObjs); clear(routeObjs); releaseWake(); setPings([]); S.indoor = null; renderSheet();
+  }
+  function renderSheet() {
+    const sh = $('#sheet');
+    const grab = `<button class="grab" data-act="toggle" aria-label="${S.sheetOpen ? '안내 접기' : '안내 펼치기'}"></button>`;
+    if (S.view === 'idle') {
+      sh.innerHTML = !S.buildings.length
+        ? `${grab}<h2>${esc(C.campusName)}</h2><p class="note">아직 캠퍼스 데이터가 없어요. 관리자: 편집기에서 저장한 campus.geojson을 data 폴더에 넣고 다시 배포해 주세요.</p>`
+        : `${grab}<h2>${esc(C.campusName)} 길찾기</h2><p class="sub">위에서 건물을 검색하거나, 챗봇에게 편하게 물어보세요.</p>
+           <div class="row"><button class="btn go" data-act="chat">챗봇에게 물어보기</button></div>
+           ${testPanelHtml()}
+           <p class="sub" style="font-size:11px;margin-top:10px;text-align:right">버전 ${APP_VERSION}${TEST ? ', 테스트 모드' : ''}</p>`;
+      return;
+    }
+    const b = S.dest; if (!b) return;
+    const ents = entsOf(b.id);
+    if (S.view === 'dest') {
+      const st = startInfo();
+      const needPick = !st || S.start; // GPS를 못 쓸 때만 출발점 고르기를 보여 줌
+      const opts = [S.opts.avoidStairs ? '계단 피하기' : '', S.opts.openOnly ? '열린 입구만' : '', S.forcedEnt ? '입구 직접 선택' : ''].filter(Boolean);
+      sh.innerHTML = `${grab}<div class="sumrow"><div class="grow"><h2>${esc(b.props.name || '이름 없는 건물')}</h2>
+        <p class="line">입구 ${ents.length}곳${opts.length ? `, ${opts.join(', ')}` : ''}${st ? `, 출발 ${esc(st.label)}` : ''}</p></div>
+        <button class="btn go" data-act="route" ${st && ents.length ? '' : 'disabled'}>길찾기</button></div>
+        ${!ents.length ? '<p class="note err">등록된 입구가 없어요.</p>' : ''}
+        ${S.indoor ? '<div class="row"><button class="btn" data-act="indoor">건물에 들어왔어요 (실내 안내)</button></div>' : ''}
+        ${needPick ? `<div class="start">출발 <b>${st ? esc(st.label) : S.gpsDenied ? '위치 권한이 꺼져 있어요' : '위치 찾는 중'}</b>
+          <button data-act="${S.start ? 'useGps' : 'pick'}">${S.start ? '내 위치 쓰기' : '지도에서 고르기'}</button></div>` : ''}
+        ${S.pos && S.pos.acc > 50 && !S.start ? `<p class="note warn">GPS가 ±${Math.round(S.pos.acc)}m로 부정확해요. 밖으로 나오면 나아져요.</p>` : ''}
+        <button class="more" data-act="toggle">${S.sheetOpen ? '접기 ▴' : '입구 고르기, 조건 ▾'}</button>
+        ${S.sheetOpen ? `${ents.length >= 2 ? entPickerHtml(null) : ''}
+        <div class="chips">
+          <button class="chip" data-opt="avoidStairs" aria-pressed="${S.opts.avoidStairs}">계단 피하기</button>
+          <button class="chip" data-opt="openOnly" aria-pressed="${S.opts.openOnly}">지금 열린 입구만</button>
+        </div>` : ''}`;
+      return;
+    }
+    if (S.view === 'nav' && S.nav) {
+      const r0 = S.nav.r, r = S.nav.view ? { ...r0, ...S.nav.view } : r0, e = S.entrances.find((x) => x.id === r.entranceId), t = ENT[e?.props.type] || ENT.main;
+      const min = Math.max(1, Math.round(r.distance / C.walkSpeed / 60));
+      const fl = e?.props.floor !== '' && e?.props.floor != null ? ` ${esc(e.props.floor)}층` : '';
+      const warn = r.snapDistance > C.offCampusDistance ? `<p class="note warn">캠퍼스에서 약 ${Math.round(r.snapDistance)}m 떨어져 있어요. 점선은 가장 가까운 캠퍼스 길까지의 직선이에요.</p>` : '';
+      sh.innerHTML = `${grab}<div class="sumrow"><div class="grow"><div class="big">${Math.round(r.distance)}m <span style="font-size:16px;font-weight:600">약 ${min}분</span></div>
+        <p class="line">「${esc(b.props.name)}」 ${esc(t.label)}${fl}${e?.props.note ? `, ${esc(e.props.note)}` : ''}</p></div>
+        <button class="btn dark" data-act="end">끝내기</button></div>
+        ${S.indoor ? '<div class="row"><button class="btn" data-act="indoor">건물에 들어왔어요 (실내 안내)</button></div>' : ''}
+        ${warn}
+        <button class="more" data-act="toggle">${S.sheetOpen ? '접기 ▴' : '단계별 안내, 다른 입구 ▾'}</button>
+        ${S.sheetOpen ? `<ol class="steps">${(S.nav.f ? S.nav.f.steps.filter((x, k) => k === 0 ? S.nav.f.progress < 5 : x.along == null || x.along > S.nav.f.progress - 3) : stepsFor(r)).map((x) => `<li>${esc(x.text)}</li>`).join('')}</ol>
+        ${!S.nav.live ? '<p class="note">지도에서 고른 출발점 기준이라 걸어가도 남은 거리가 바뀌지 않아요.</p>' : ''}
+        ${r.snapDistance > 20 && !warn ? `<p class="note">가장 가까운 길까지 ${Math.round(r.snapDistance)}m는 점선으로 표시했어요.</p>` : ''}
+        ${entPickerHtml(r.entranceId)}` : ''}`;
+      return;
+    }
+    if (S.view === 'indoor' && S.indoor) { sh.innerHTML = indoorHtml(grab); return; }
+    if (S.view === 'arrived') {
+      const e = S.entrances.find((x) => x.id === S.nav?.r.entranceId), t = ENT[e?.props.type] || ENT.main;
+      sh.innerHTML = `${grab}<div class="big">도착했어요</div><p class="sub" style="font-size:16px;color:var(--ink)">「${esc(b.props.name)}」 ${esc(t.label)}</p>
+        ${e?.props.note ? `<p class="note">${esc(e.props.note)}</p>` : ''}
+        ${TEST && TL.cur ? verdictHtml('테스트 기록: 실제로 어땠나요?') : '<div class="row"><button class="btn dark" data-act="end">닫기</button></div>'}`;
+      return;
+    }
+    if (S.view === 'verdict') {
+      sh.innerHTML = `${grab}<h2>안내를 끝냈어요</h2><p class="line">${esc(b.props.name)}, ${TL.cur ? `${Math.round((Date.now() - TL.cur.t0) / 1000)}초 진행` : ''}</p>${verdictHtml('테스트 기록: 어떻게 끝났나요?')}`;
+      return;
+    }
+  }
+  $('#sheet').addEventListener('toggle', (e) => { if (e.target.matches('details.dir')) S.stepsOpen = e.target.open; }, true);
+  $('#sheet').addEventListener('click', (e) => {
+    const bb = e.target.closest('[data-b]');
+    if (bb) { const b = S.buildings.find((x) => x.id === bb.dataset.b); if (b) pickBuilding(b); return; }
+    const vd = e.target.closest('[data-verdict]');
+    if (vd) { trialFinish(vd.dataset.verdict, ($('#tmemo') || {}).value); S.view = 'idle'; endAll(); return; }
+    const pe = e.target.closest('[data-ent]');
+    if (pe) { chooseEnt(pe.dataset.ent); return; }
+    const o = e.target.closest('[data-opt]');
+    if (o) { S.opts[o.dataset.opt] = !S.opts[o.dataset.opt]; renderSheet(); return; }
+    const a = e.target.closest('[data-act]'); if (!a) return;
+    const act = a.dataset.act;
+    if (act === 'route') findRoute();
+    if (act === 'pick') { S.picking = true; toast('출발할 곳을 지도에서 눌러 주세요', 4000); }
+    if (act === 'useGps') { S.start = null; drawStartPin(); if (S.nav) findRoute(); else renderSheet(); }
+    if (act === 'end') endAll();
+    if (act === 'indoor') startIndoor();
+    if (act === 'xr') startXR();
+    if (act === 'ar') startAR(false);
+    if (act === 'floorUp') { S.indoor.floor = S.indoor.node.floor; S.indoor.moved = true; drawIndoor(); renderSheet(); }
+    if (act === 'chat') openChat();
+    if (act === 'toggle') { S.sheetOpen = !S.sheetOpen; renderSheet(); }
+    if (act === 'texport') exportTrials();
+    if (act === 'tclear' && confirm(`테스트 기록 ${TL.list.length}건을 지울까요? 먼저 내보내 두는 걸 추천해요.`)) { TL.list = []; saveTrials(); renderSheet(); }
+    if (act === 'toff') { try { localStorage.removeItem('campus-test-mode'); } catch {} TEST = false; renderSheet(); toast('테스트 모드를 껐어요'); }
+  });
+
+  // ---------- 경로 ----------
+  function candidateEnts() {
+    if (S.forcedEnt) { const f = S.entrances.find((x) => x.id === S.forcedEnt && x.props.building_id === S.dest.id); if (f) return [f]; }
+    let ents = entsOf(S.dest.id);
+    if (S.opts.avoidStairs) ents = ents.filter((e) => e.props.type !== 'stairs' && e.props.accessible !== false);
+    if (S.opts.openOnly) ents = ents.filter((e) => CampusCore.isOpenNow(e.props.open_hours));
+    return ents;
+  }
+  function findRoute(quiet = false) {
+    const fail = (m, code) => { if (!quiet) toast(m, 4500); return { error: m, code }; };
+    if (!S.dest) return fail('목적지가 없어요.');
+    const st = startInfo();
+    if (!st) return fail('출발점이 없어요. 위치를 허용하거나 지도에서 골라 주세요.', 'NO_START');
+    if (!S.topo) return fail('길 데이터가 아직 없어요.');
+    const ents = candidateEnts();
+    if (!ents.length) return fail(S.opts.avoidStairs ? '계단 없이 들어갈 수 있는 입구가 없어요.' : S.opts.openOnly ? '지금 열려 있는 입구가 없어요.' : '등록된 입구가 없어요.');
+    const r = CampusCore.route(S.topo, st.ll, ents.map((e) => e.id), { avoidStairs: S.opts.avoidStairs });
+    if (r.error) return fail(r.error);
+    S.nav = { r, live: !st.manual, entIds: ents.map((e) => e.id) };
+    S.nav.f = CampusGuide.create(r, stepsFor(r));
+    S.sheetOpen = false;
+    if (TL.cur) trialEvent('restart', { to: entLabelOf(r.entranceId) }); else trialStart(r, st);
+    voiceStart(r);
+    S.view = 'nav';
+    drawDest(S.dest, r.entranceId); drawRoute(r); renderSheet();
+    fit(r.line);
+    if (S.nav.live) { S.follow = true; $('#locBtn').classList.add('on'); requestWake(); }
+    return r;
+  }
+  // 화면용: 지금 위치부터 남은 경로 (경로 따라가기 로직은 js/guide.js)
+  function remainingRoute(f, p, pr) {
+    const rest = f.path.slice(pr.i);
+    return { line: [p.ll, f.pj.inv(pr.q), ...rest], snapDistance: pr.dist, distance: Math.max(0, f.total - f.progress) + (pr.dist > 3 ? pr.dist : 0) };
+  }
+  const guideOpt = (target) => ({ now: Date.now(), target, turnAnnounce: C.turnAnnounce, offRouteDistance: C.offRouteDistance, arriveRadius: C.arriveRadius, walkSpeed: C.walkSpeed });
+  function stepsFor(r) {
+    const e = S.entrances.find((x) => x.id === r.entranceId), t = ENT[e?.props.type] || ENT.main;
+    // r.line[0]은 GPS 위치, [1]부터 길 위. GPS가 길 옆에 찍히면 그 연결선이 가짜 '꺾기'가 되므로 빼고 계산
+    return CampusBot.directions(r.line.slice(1), { degs: r.degs ? r.degs.slice(1) : null, arrive: `「${S.dest?.props.name || ''}」 ${t.label}에 도착해요` });
+  }
+  function liveUpdate() {
+    const p = S.pos; if (!p || !S.nav || !S.nav.f) return;
+    const nav = S.nav;
+    const target = S.entrances.find((x) => x.id === nav.r.entranceId);
+    trialFix(p);
+    if (nav.arrived) return; // 도착 뒤에는 아무것도 하지 않음 (도착 안내 반복 방지)
+    const res = CampusGuide.update(nav.f, { ll: p.ll, acc: p.acc, speed: p.speed }, guideOpt(target ? target.coord : null));
+    if (res.arrived) {
+      nav.arrived = true; nav.live = false;
+      trialEvent('arrive_auto', { dist: Math.round(res.arriveDist), acc: Math.round(p.acc) });
+      voiceArrive();
+      S.view = 'arrived'; clear(routeObjs); releaseWake();
+      if (S.indoor) { startIndoor(); return; }
+      renderSheet(); return;
+    }
+    if (res.offRoute) {
+      if (p.acc > C.gpsMaxAccuracy || Date.now() - S.lastReroute < 3000) return;
+      S.lastReroute = Date.now();
+      const r = CampusCore.route(S.topo, p.ll, nav.entIds, { avoidStairs: S.opts.avoidStairs });
+      if (r.error) return;
+      voiceReroute(nav.r, r);
+      if (r.entranceId !== nav.r.entranceId) drawDest(S.dest, r.entranceId);
+      nav.r = r; nav.f = CampusGuide.create(r, stepsFor(r)); nav.view = null;
+      drawRoute(r); renderSheet();
+      return;
+    }
+    if (res.announce) speakTurn(res.announce, p);
+    if (res.pr && Date.now() - (nav.drawnAt || 0) > 2000) { // 화면은 2초에 한 번만
+      nav.drawnAt = Date.now();
+      nav.view = remainingRoute(nav.f, p, res.pr); drawRoute(nav.view); renderSheet();
+    }
+  }
+
+  // ---------- 음성 안내 (브라우저 내장 음성 합성, 무료) ----------
+  const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  // 음성 안내는 기본으로 꺼 둠 (실기기 검증이 끝날 때까지). 사용자가 켜면 그 선택을 기억
+  const V = { on: false, voice: null, lastAt: 0, lastReroute: 0, lastTurnAt: 0, arrivedSaid: null };
+  try { V.on = localStorage.getItem('campus-voice-v2') === 'on'; } catch {} // 키 이름을 바꿔 예전에 저장된 '켜짐'은 무시
+  function pickVoice() {
+    if (!canSpeak) return;
+    const vs = speechSynthesis.getVoices() || [];
+    V.voice = vs.find((v) => /^ko[-_]KR/i.test(v.lang)) || vs.find((v) => /^ko/i.test(v.lang)) || null;
+  }
+  if (canSpeak) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+  function say(text, { now = false } = {}) {
+    if (!V.on || !canSpeak || !text) return;
+    try {
+      if (now) speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR'; if (V.voice) u.voice = V.voice; u.rate = 1.05;
+      speechSynthesis.speak(u);
+      V.lastAt = Date.now();
+      trialEvent('voice', { text });
+    } catch {}
+  }
+  const buzz = (pattern) => { try { if (V.on && navigator.vibrate) navigator.vibrate(pattern); } catch {} };
+  function setVoice(on) {
+    V.on = on;
+    try { localStorage.setItem('campus-voice-v2', on ? 'on' : 'off'); } catch {}
+    $('#voiceBtn').setAttribute('aria-pressed', on);
+    $('#voiceBtn').setAttribute('aria-label', on ? '음성 안내 끄기' : '음성 안내 켜기');
+    if (!on && canSpeak) speechSynthesis.cancel();
+  }
+  setVoice(V.on);
+  $('#voiceBtn').addEventListener('click', () => {
+    if (!canSpeak) { toast('이 브라우저는 음성 안내를 지원하지 않아요'); return; }
+    setVoice(!V.on);
+    if (V.on) say('음성 안내를 켰어요.', { now: true }); else toast('음성 안내를 껐어요');
+  });
+  const meters = (m) => (m < 15 ? Math.max(5, Math.round(m / 5) * 5) : Math.round(m / 10) * 10);
+  const turnWord = (t) => (t === 'right' ? '오른쪽으로 꺾으세요' : t === 'left' ? '왼쪽으로 꺾으세요' : t === 'uturn' ? '뒤로 돌아가세요' : '');
+  const turnPhrase = (ann) => (ann.chain ? `${turnWord(ann.turn.turn).replace('으세요', '은 뒤')}, 곧 ${turnWord(ann.chain.turn)}.` : `${turnWord(ann.turn.turn)}.`);
+  // 출발 안내: 첫 꺾기가 가까우면 '직진' 대신 바로 그 꺾기를 함께 말함 (직진하라더니 바로 꺾으라는 모순 방지)
+  function voiceStart(r) {
+    V.lastTurnAt = 0;
+    const f = S.nav && S.nav.f, steps = f ? f.steps : stepsFor(r);
+    const e = S.entrances.find((x) => x.id === r.entranceId), t = ENT[e?.props.type] || ENT.main;
+    const min = Math.max(1, Math.round(r.distance / C.walkSpeed / 60));
+    const head = `${S.dest.props.name} ${t.label}까지 ${meters(r.distance)}미터, 약 ${min}분이에요.`;
+    const st = f && S.nav.live ? CampusGuide.startTurn(f, guideOpt(null)) : null;
+    let tail;
+    if (st) tail = ` ${turnPhrase(st)}`;
+    else if (steps[0] && steps[0].dist >= 20) tail = ` ${meters(steps[0].dist)}미터 직진하세요.`;
+    else tail = ' 길을 따라 걸어가세요.';
+    say(head + tail, { now: true });
+  }
+  function speakTurn(ann, p) {
+    trialEvent('turn', { turn: ann.turn.turn, dist: Math.round(ann.dist), acc: Math.round(p.acc) });
+    say(ann.dist <= 6 ? turnPhrase(ann) : `잠시 후 ${turnPhrase(ann)}`, { now: true });
+    buzz(ann.turn.turn === 'right' ? [80] : ann.turn.turn === 'left' ? [80, 80, 80] : [200]);
+  }
+  function voiceReroute(prev, r) {
+    const now = Date.now();
+    if (r.entranceId !== prev.entranceId) {
+      if (TL.cur) { TL.cur.entrance_changes++; trialEvent('entrance_change', { to: entLabelOf(r.entranceId) }); }
+      const e = S.entrances.find((x) => x.id === r.entranceId), t = ENT[e?.props.type] || ENT.main;
+      say(`더 가까운 ${t.label}${withRo(t.label)} 안내할게요.`); V.lastReroute = now; return;
+    }
+    if (TL.cur) { TL.cur.reroutes++; trialEvent('reroute', { to_m: Math.round(r.distance) }); }
+    if (now - V.lastReroute > 15000) { say('경로를 벗어나서 다시 찾았어요.', { now: true }); V.lastReroute = now; }
+  }
+  function voiceArrive() {
+    if (V.arrivedSaid === S.nav) return;
+    V.arrivedSaid = S.nav;
+    const e = S.entrances.find((x) => x.id === S.nav?.r.entranceId), t = ENT[e?.props.type] || ENT.main;
+    say(`${S.dest.props.name} ${t.label}에 도착했어요.${e?.props.note ? ` ${e.props.note}` : ''}`, { now: true });
+    buzz([200, 100, 200]);
+  }
+
+  // ---------- 현장 테스트 기록 (?test=1) ----------
+  const TL = { key: 'campus-route-trials-v1', list: [], cur: null };
+  try { TL.list = JSON.parse(localStorage.getItem(TL.key)) || []; } catch {}
+  const saveTrials = () => { try { localStorage.setItem(TL.key, JSON.stringify(TL.list)); } catch {} };
+  const entLabelOf = (id) => { const e = S.entrances.find((x) => x.id === id); return e ? (ENT[e.props.type] || ENT.main).label : ''; };
+  function trialStart(r, st) {
+    if (!TEST) return;
+    TL.cur = {
+      id: `r_${Date.now().toString(36)}`, started_at: new Date().toISOString(), t0: Date.now(), app_version: APP_VERSION,
+      building: S.dest.props.name, building_id: S.dest.id, planned_entrance: entLabelOf(r.entranceId), planned_entrance_id: r.entranceId,
+      start: st.ll, start_source: st.manual ? 'map' : 'gps', start_acc_m: S.pos ? Math.round(S.pos.acc) : null,
+      planned_m: Math.round(r.distance), planned_min: +(r.distance / C.walkSpeed / 60).toFixed(1),
+      options: { avoidStairs: S.opts.avoidStairs, openOnly: S.opts.openOnly, chosenEntrance: !!S.forcedEnt }, voice_on: V.on,
+      events: [], reroutes: 0, entrance_changes: 0, track: [],
+    };
+  }
+  function trialEvent(type, extra = {}) { if (TL.cur) TL.cur.events.push({ t: Math.round((Date.now() - TL.cur.t0) / 1000), type, ...extra }); }
+  function trialFix(p) { if (TL.cur && TL.cur.track.length < 1500) TL.cur.track.push([+p.ll[0].toFixed(7), +p.ll[1].toFixed(7), Math.round(p.acc), Math.round((Date.now() - TL.cur.t0) / 1000)]); }
+  function trialFinish(result, memo) {
+    const c = TL.cur; if (!c) return;
+    c.result = result; c.memo = memo || '';
+    c.duration_s = Math.round((Date.now() - c.t0) / 1000);
+    let walked = 0; for (let i = 1; i < c.track.length; i++) walked += distM(c.track[i - 1], c.track[i]);
+    c.walked_m = Math.round(walked);
+    c.final_entrance = entLabelOf(S.nav?.r.entranceId) || c.planned_entrance;
+    delete c.t0;
+    TL.list.push(c); saveTrials(); TL.cur = null;
+    toast(`테스트 기록을 저장했어요 (총 ${TL.list.length}건)`);
+  }
+  function trialSummary() {
+    const L = TL.list, n = L.length; if (!n) return null;
+    const ok = L.filter((x) => x.result === 'ok').length;
+    const timed = L.filter((x) => x.result === 'ok' && x.planned_min > 0);
+    const ratio = timed.length ? timed.reduce((s, x) => s + x.duration_s / 60 / x.planned_min, 0) / timed.length : null;
+    const ann = L.flatMap((x) => x.events.filter((e) => e.type === 'turn').map((e) => e.dist)).sort((a, b) => a - b);
+    const autoArr = L.filter((x) => x.events.some((e) => e.type === 'arrive_auto')).length;
+    return { n, ok, success_rate: +(ok / n).toFixed(2), auto_arrival: autoArr, time_ratio: ratio && +ratio.toFixed(2), turn_announce_median_m: ann.length ? ann[Math.floor(ann.length / 2)] : null, turn_announces: ann.length };
+  }
+  function exportTrials() {
+    const out = { type: 'route-field-tests', exported_at: new Date().toISOString(), app_version: APP_VERSION, device: navigator.userAgent,
+      config: { arriveRadius: C.arriveRadius, turnAnnounce: C.turnAnnounce, gpsMaxAccuracy: C.gpsMaxAccuracy }, summary: trialSummary(), trials: TL.list };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: 'application/json' }));
+    a.download = 'route-tests.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+  function testPanelHtml() {
+    if (!TEST) return '';
+    const sm = trialSummary();
+    return `<div class="note" style="margin-top:12px"><b>현장 테스트 모드</b><br>${sm ? `기록 ${sm.n}건, 맞는 입구 도착 ${sm.ok}건 (${Math.round(sm.success_rate * 100)}%)${sm.time_ratio ? `, 예상 대비 실제 시간 ${sm.time_ratio}배` : ''}${sm.turn_announce_median_m != null ? `, 꺾기 안내 평균 ${sm.turn_announce_median_m}m 전` : ''}` : '아직 기록이 없어요. 건물을 골라 길찾기를 하면 자동으로 기록돼요.'}</div>
+      <div class="row"><button class="btn" data-act="texport" ${sm ? '' : 'disabled'}>JSON 내보내기</button><button class="btn" data-act="tclear" ${sm ? '' : 'disabled'}>기록 지우기</button><button class="btn" data-act="toff">모드 끄기</button></div>`;
+  }
+  const verdictHtml = (title) => `<p class="label-sm" style="font-size:14px;color:var(--ink);font-weight:600">${esc(title)}</p>
+    <div class="chips" style="margin-top:6px">
+      <button class="chip" data-verdict="ok">맞는 입구에 도착</button>
+      <button class="chip" data-verdict="wrong_place">다른 곳에 도착</button>
+      <button class="chip" data-verdict="bad_route">길 안내가 이상했음</button>
+      <button class="chip" data-verdict="gave_up">중간에 그만둠</button>
+    </div>
+    <input id="tmemo" class="inp" style="width:100%;margin-top:8px;min-height:44px;border:1px solid var(--rule);border-radius:10px;padding:8px 10px;font-size:16px;background:var(--paper)" placeholder="메모 (예: 음성이 늦게 나옴, 건물 사이에서 위치 튐)">`;
+
+  // ---------- 화면 꺼짐 방지 (안내 중) ----------
+  async function requestWake() { try { if ('wakeLock' in navigator && !S.wakeLock) S.wakeLock = await navigator.wakeLock.request('screen'); } catch {} }
+  function releaseWake() { try { S.wakeLock && S.wakeLock.release(); } catch {} S.wakeLock = null; }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.nav && S.nav.live && S.view === 'nav') requestWake(); });
+
+
+  // ---------- 챗봇 ----------
+  // 호실 노드: DB에서 직접 찍은 좌표(xy)만 씀. 앵커(node_source=anchor)는 실내 AR용이라 제외. 못 불러와도 챗봇은 그대로 동작
+  const nodes = [];
+  if (C.supabaseUrl && C.supabaseKey) {
+    fetch(`${C.supabaseUrl}/rest/v1/route_nodes?select=name,node_type,latitude,longitude,floor,building:buildings(code)&node_source=eq.xy`, { headers: { apikey: C.supabaseKey, Authorization: `Bearer ${C.supabaseKey}` } })
+      .then((r) => (r.ok ? r.json() : [])).then((rows) => nodes.push(...rows)).catch(() => {});
+  }
+  const bot = CampusBot.create({ buildings: S.buildings, entrances: S.entrances, nodes });
+  const msgs = $('#msgs');
+  const QUICK = ['도서관 어디야?', '몇 시까지 열어?', '엘리베이터 있는 입구', '카페 어디 있어?', '도움말'];
+  $('#quick').innerHTML = QUICK.map((x) => `<button type="button">${esc(x)}</button>`).join('');
+  function addMsg(who, html, acts) {
+    const el = document.createElement('div');
+    el.className = `msg ${who}`;
+    el.innerHTML = html + (acts && acts.length ? `<div class="acts">${acts.map((a, i) => `<button data-i="${i}">${esc(a.label)}</button>`).join('')}</div>` : '');
+    if (acts) el._acts = acts;
+    msgs.appendChild(el);
+    requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
+    return el;
+  }
+  // 층별 안내: 왼쪽에 층, 오른쪽에 시설 (말풍선이 줄바꿈을 그대로 보여 주므로 HTML 안에 줄바꿈을 넣지 않음)
+  function floorsHtml(rows) {
+    if (!rows || !rows.length) return '';
+    const sorted = rows.slice().sort((a, b) => a.floor - b.floor); // 지하, 1층, 2층… 순서
+    return `<div class="floors">${sorted.map((r) => `<div class="fl"><b>${esc(r.label)}</b><span>${esc(r.items.join(', '))}</span></div>`).join('')}</div>`;
+  }
+  function openChat() {
+    $('#chat').hidden = false;
+    if (!msgs.children.length) addMsg('bot', esc(S.buildings.length ? `안녕하세요! ${C.campusName} 도우미예요. 가고 싶은 건물이나 궁금한 걸 물어보세요. 줄임말이나 초성으로 써도 알아들어요.` : '아직 캠퍼스 데이터가 등록되지 않아서 답할 수 있는 게 없어요.'));
+    // 휴대폰에서는 열자마자 키보드가 올라와 대화를 가리지 않도록, 마우스 환경에서만 자동 포커스
+    if (window.matchMedia && window.matchMedia('(pointer: fine)').matches) setTimeout(() => $('#chatIn').focus(), 50);
+    fitChat();
+  }
+  // 아이폰 키보드가 올라오면 채팅창을 보이는 영역에 맞춰 줄임 (입력창이 키보드에 가리지 않게)
+  function fitChat() {
+    const vv = window.visualViewport, ch = $('#chat');
+    if (!vv || ch.hidden) return;
+    ch.style.height = `${vv.height}px`;
+    ch.style.top = `${vv.offsetTop}px`;
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  if (window.visualViewport) { visualViewport.addEventListener('resize', fitChat); visualViewport.addEventListener('scroll', fitChat); }
+  const closeChat = () => { $('#chat').hidden = true; };
+  $('#chatBtn').addEventListener('click', openChat);
+  $('#chatClose').addEventListener('click', closeChat);
+  $('#chatForm').addEventListener('submit', (e) => { e.preventDefault(); const t = $('#chatIn').value.trim(); if (!t) return; $('#chatIn').value = ''; ask(t); });
+  $('#quick').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) ask(b.textContent); });
+  msgs.addEventListener('click', (e) => {
+    const b = e.target.closest('.acts button'); if (!b) return;
+    const a = b.closest('.msg')._acts[+b.dataset.i];
+    runAction(a);
+  });
+  function ask(text) {
+    addMsg('user', esc(text));
+    const r = bot.reply(text);
+    addMsg('bot', esc(r.text) + floorsHtml(r.floors), withNearest(r));
+    if (r.auto) runAction(r.auto, true);
+  }
+  // 편의시설이 여러 건물에 있으면 지금 위치에서 가장 가까운 곳을 계산해 버튼으로 추가
+  function withNearest(r) {
+    const acts = r.actions || [];
+    const st = startInfo();
+    if (!r.nearestOf || !st || !S.topo) return acts;
+    let best = null;
+    r.nearestOf.forEach((bid) => {
+      const ids = entsOf(bid).map((e) => e.id); if (!ids.length) return;
+      const rr = CampusCore.route(S.topo, st.ll, ids, {});
+      if (!rr.error && (!best || rr.distance < best.d)) best = { bid, d: rr.distance };
+    });
+    if (!best) return acts;
+    const b = S.buildings.find((x) => x.id === best.bid);
+    return [{ label: `가장 가까운 ${b.props.name} (${Math.round(best.d)}m)`, action: 'route', bid: best.bid }, ...acts.filter((a) => a.bid !== best.bid)];
+  }
+  function runAction(a, fromAuto = false) {
+    if (a.action === 'ask') { ask(a.text); return; }
+    if (a.action === 'map') { closeChat(); return; }
+    if (a.action === 'pick') { closeChat(); S.picking = true; toast('출발할 곳을 지도에서 눌러 주세요', 4000); return; }
+    if (a.action !== 'route') return;
+    const b = S.buildings.find((x) => x.id === a.bid); if (!b) return;
+    q.value = b.props.name || ''; $('#clearQ').hidden = false;
+    S.opts.avoidStairs = !!a.avoidStairs;
+    selectBuilding(b); // 입구 선택은 자동으로 초기화
+    if (a.node) { S.indoor = { node: a.node }; setPings([a.node]); fit([...b.ring, a.node.ll]); }
+    const r = findRoute(true);
+    if (!r.error && a.node) fit([...r.line, a.node.ll]);
+    if (r.error) {
+      if (r.code === 'NO_START') addMsg('bot', esc('지금 위치를 아직 몰라요. 위치 권한을 허용하거나, 지도에서 출발점을 골라 주세요.'), [{ label: '지도에서 출발점 고르기', action: 'pick' }]);
+      else addMsg('bot', esc(r.error), [{ label: '지도 보기', action: 'map' }]);
+      return;
+    }
+    const steps = stepsFor(r);
+    const min = Math.max(1, Math.round(r.distance / C.walkSpeed / 60));
+    addMsg('bot', `<b>${Math.round(r.distance)}m, 걸어서 약 ${min}분</b>${a.avoidStairs ? ' (계단 없는 길)' : ''}<ol class="steps">${steps.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ol>`, [{ label: '지도에서 보기', action: 'map' }]);
+    if (!fromAuto) return;
+  }
+
+  // ---------- 시작 ----------
+  if (campusPts.length) fit(campusPts);
+  renderSheet();
+  // 챗봇 연동: ?to=도서관 형태로 열면 바로 그 건물을 보여줌 (&start=위도,경도 로 출발점 지정 가능)
+  const params = new URLSearchParams(location.search);
+  const sp = params.get('start');
+  if (sp) { const m = sp.split(',').map(Number); if (m.length === 2 && m.every(Number.isFinite)) { S.start = [m[1], m[0]]; drawStartPin(); } }
+  const to = params.get('to');
+  if (to) {
+    const hit = search(to)[0];
+    if (hit) { pickBuilding(hit); if (startInfo()) findRoute(); else S.autoRoute = true; }
+    else toast(`"${to}"에 맞는 건물을 찾지 못했어요`);
+  }
+  const askQ = params.get('ask');
+  if (askQ) { openChat(); ask(askQ); }
+  window.campusApp = { S, map, findRoute, selectBuilding, onFix, ask, openChat, TL };
+})();
+</script>
+</body>
+</html>

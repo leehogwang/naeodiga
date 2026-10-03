@@ -1,0 +1,16 @@
+{
+ "buildings": [
+  "U4"
+ ],
+ "nav": "nav.json",
+ "origin_latlng": [
+  36.9491043,
+  127.9066781
+ ],
+ "rotation_deg": 54.00222895073119,
+ "translation_en_m": [
+  1.5348320805336897,
+  7.6487285288721525
+ ],
+ "note": "nav.json 좌표(gwagidae-v1 모델 프레임) <-> 위경도. ybyb_test/georef/georef.py 정합 결과. E,N = R(rot)·(x,-z)+t"
+}
